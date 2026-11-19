@@ -9,6 +9,7 @@ A simple, Seerr-like request site for music.
 - **Status** comes from Lidarr (searching, downloading with %, downloaded) and from the Emby library (available). Anything already in Emby is marked "Available" in search and can't be requested again.
 - **No "Various Artists" or "[unknown]".** Compilations credited to Various Artists, and releases by MusicBrainz' placeholder for an unknown artist, are hidden from search and can't be requested, since Lidarr would add them as one huge artist.
 - **Approval** is optional (`AUTO_APPROVE`). Administrators can approve, decline, retry and delete requests.
+- **Email notifications** (optional, off by default): administrators get an email when a request needs approval, and users can choose which status changes on their own requests they want an email about.
 - The app has no dependencies, just Node.js. Data is stored in a single JSON file (`/data/db.json`).
 
 ## Architecture
@@ -99,6 +100,20 @@ Data is stored in `./data` by default (`DATA_DIR`).
 - If root folder and profiles are set to "First available", the app uses the first root folder and the first profiles in Lidarr.
 - New artists are added with *Monitor: None*. Only the selected albums are monitored. "Follow new releases" sets *Monitor New Albums: All* on the artist.
 
+## Email notifications
+
+Email is off until an administrator turns it on under **Settings → Email notifications**:
+
+- **Mail server:** the SMTP server, encryption and port. Common choices are STARTTLS on port 587, SSL/TLS on port 465, or no encryption on port 25 (only for a relay on your own network). The server's certificate must be valid, so self-signed certificates are not accepted.
+- **Username and password:** leave them empty if the server doesn't need sign-in. Gmail and Outlook need an *app password*, not your normal password.
+- **Sender:** e.g. `Tonearr <you@example.com>`. Many providers only accept the address you sign in with.
+- **Tonearr address:** used for links in the emails, e.g. `http://192.168.1.10:5056`.
+- **Notify about new requests:** one or more addresses that get an email when a request needs approval. This only happens when *Approve requests automatically* is off.
+
+Click **Send test email** to check the setup before saving.
+
+Once email is on, every user gets a **Notifications** page. There they enter their email address and choose what to be told about: approved, declined, download started, downloaded, partly available, available or failed. Each kind of email is sent at most once per request. Email addresses are stored in `/data/db.json`.
+
 ## Status from Emby
 
 Emby reads the MusicBrainz IDs that Lidarr writes to the files. Matching uses the release group ID, then the release ID, and finally artist + album title for albums without IDs.
@@ -118,6 +133,13 @@ Settings are saved to `/data/settings.json` from the web UI. Environment variabl
 | `LIDARR_METADATA_PROFILE_ID` | first | Metadata profile ID |
 | `AUTO_APPROVE` | `true` | `false` means an administrator must approve requests |
 | `MB_USER_AGENT` | generic | MusicBrainz asks for contact info here |
+| `EMAIL_ENABLED` | `false` | Turn on email notifications |
+| `SMTP_HOST` / `SMTP_PORT` | – / `587` | Mail server |
+| `SMTP_SECURITY` | `starttls` | `starttls`, `tls` (port 465) or `none` |
+| `SMTP_USER` / `SMTP_PASSWORD` | – | Sign-in to the mail server, if needed |
+| `EMAIL_FROM` | – | Sender, e.g. `Tonearr <you@example.com>` |
+| `ADMIN_EMAILS` | – | Comma-separated; told about requests that need approval |
+| `APP_URL` | – | Tonearr's address, used for links in emails |
 | `APP_NAME` | `Tonearr` | Site name |
 | `PORT` | `5056` | |
 | `DATA_DIR` | `./data` (`/data` in Docker) | Where `db.json` and `settings.json` are stored |
@@ -128,17 +150,17 @@ Settings are saved to `/data/settings.json` from the web UI. Environment variabl
 ## Local testing without real servers
 
 ```bash
-node dev/mock.js          # fake Emby (:18096) and Lidarr (:18686)
+node dev/mock.js          # fake Emby (:18096), Lidarr (:18686) and mail server (:12525)
 EMBY_URL=http://localhost:18096 EMBY_API_KEY=emby-key \
 LIDARR_URL=http://localhost:18686 LIDARR_API_KEY=lidarr-key \
 WORKER_INTERVAL_SEC=5 EMBY_INDEX_TTL_SEC=5 node src/server.js
 ```
 
-Sign in as `admin`/`admin` or `alice`/`alice`. The mock server simulates search, download and the album appearing in Emby.
+Sign in as `admin`/`admin` or `alice`/`alice`. The mock server simulates search, download and the album appearing in Emby. To try email, set the mail server to `localhost`, port `12525`, encryption *None*. The emails are printed in the mock's terminal.
 
 ## Security
 
-API keys are never shown in plain text in the web UI. They are stored in `/data/settings.json`, so keep that folder private. The user's Emby password is only passed on to Emby. It is never stored, and the Emby session is logged out immediately. The app uses its own session cookie (HttpOnly, SameSite=Lax) and has basic protection against repeated sign-in attempts. If the app is reachable from outside your network, put it behind a reverse proxy with HTTPS.
+API keys and the mail password are never shown in plain text in the web UI. They are stored in `/data/settings.json`, so keep that folder private. The user's Emby password is only passed on to Emby. It is never stored, and the Emby session is logged out immediately. The app uses its own session cookie (HttpOnly, SameSite=Lax) and has basic protection against repeated sign-in attempts. If the app is reachable from outside your network, put it behind a reverse proxy with HTTPS.
 
 ## Releasing a new version (maintainers)
 

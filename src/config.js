@@ -44,6 +44,17 @@ export const config = {
   // MusicBrainz requires an identifiable User-Agent. Consider adding contact info.
   mbUserAgent: env('MB_USER_AGENT', `Tonearr/${pkg.version} ( self-hosted music request app )`),
 
+  // Email notifications (off by default) – usually set up in the web UI
+  emailEnabled: bool('EMAIL_ENABLED', false),
+  smtpHost: env('SMTP_HOST'),
+  smtpPort: Number(env('SMTP_PORT', '587')) || 587,
+  smtpSecurity: env('SMTP_SECURITY', 'starttls'), // starttls | tls | none
+  smtpUser: env('SMTP_USER'),
+  smtpPassword: env('SMTP_PASSWORD'),
+  emailFrom: env('EMAIL_FROM'), // "Tonearr <tonearr@example.com>"
+  adminEmails: env('ADMIN_EMAILS'), // comma-separated; told about requests that need approval
+  appUrl: trimSlash(env('APP_URL')), // used for links in emails
+
   sessionDays: Number(env('SESSION_DAYS', '30')),
   workerIntervalSec: Number(env('WORKER_INTERVAL_SEC', '30')),
   embyIndexTtlSec: Number(env('EMBY_INDEX_TTL_SEC', '300')),

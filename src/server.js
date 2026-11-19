@@ -10,6 +10,8 @@ import * as emby from './emby.js';
 import * as mb from './musicbrainz.js';
 import * as lidarr from './lidarr.js';
 import { startWorker, runOnce, computeStatus } from './worker.js';
+import * as notify from './notify.js';
+import { isEmail } from './mailer.js';
 
 const PUBLIC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public');
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -138,6 +140,8 @@ route('GET', '/api/me', async (req, res, { session }) => {
       isAdmin: session.isAdmin,
       // Admins get a notice about settings that still need to be filled in
       missingSettings: session.isAdmin ? settings.missingSettings() : [],
+      // Shows the Notifications page when the admin has switched email on
+      emailEnabled: settings.isEmailEnabled(),
     },
     appName: config.appName,
     autoApprove: config.autoApprove,
@@ -197,6 +201,42 @@ route('GET', '/api/artist/:mbid', async (req, res, { params }) => {
   });
 });
 
+// ---------- the user's own notification settings ----------
+const userPrefs = (session) => {
+  const u = db.getUser(session.userId) || {};
+  return { email: u.email || '', notify: !!u.notify, events: u.events || notify.DEFAULT_EVENTS };
+};
+
+route('GET', '/api/me/notifications', async (req, res, { session }) => {
+  send(res, 200, { prefs: userPrefs(session), events: notify.EVENTS, enabled: settings.isEmailEnabled() });
+});
+
+route('PUT', '/api/me/notifications', async (req, res, { session }) => {
+  const b = await readJson(req);
+  const email = String(b.email || '').trim().slice(0, 254);
+  if (email && !isEmail(email)) throw new HttpError(400, "That doesn't look like a valid email address");
+  if (b.notify && !email) throw new HttpError(400, 'Enter your email address to get notifications');
+  const events = (Array.isArray(b.events) ? b.events : []).filter((e) => e in notify.EVENTS);
+  db.setUser(session.userId, { name: session.userName, email, notify: !!b.notify, events });
+  send(res, 200, { prefs: userPrefs(session) });
+});
+
+const lastUserTest = new Map();
+route('POST', '/api/me/notifications/test', async (req, res, { session }) => {
+  if (!settings.isEmailEnabled()) throw new HttpError(400, 'Email notifications are turned off');
+  const { email } = userPrefs(session);
+  if (!email) throw new HttpError(400, 'Save your email address first');
+  if (Date.now() - (lastUserTest.get(session.userId) || 0) < 60_000) throw new HttpError(429, 'Wait a minute before sending another test');
+  lastUserTest.set(session.userId, Date.now());
+  try {
+    await notify.sendTest({ host: config.smtpHost, port: config.smtpPort, security: config.smtpSecurity, user: config.smtpUser, password: config.smtpPassword }, config.emailFrom, email);
+  } catch (e) {
+    console.error(`[email] Test to ${session.userName} failed: ${e.message}`);
+    throw new HttpError(502, 'The test email could not be sent – ask an administrator to check the mail settings');
+  }
+  send(res, 200, { ok: true, to: email });
+});
+
 // ---------- requests ----------
 const ACTIVE_ITEM = new Set(['pending', 'approved', 'waiting', 'searching', 'downloading', 'downloaded', 'available']);
 
@@ -236,6 +276,7 @@ route('POST', '/api/requests', async (req, res, { session }) => {
   });
   console.log(`[request] #${request.id} ${session.userName}: ${request.artistName} (${request.items.length} album)${approved ? '' : ' – pending approval'}`);
   if (approved) setImmediate(runOnce);
+  else notify.newPendingRequest(request);
   send(res, 201, { request, skipped: albums.length - fresh.length });
 });
 
@@ -249,8 +290,7 @@ route('POST', '/api/requests/:id/approve', async (req, res, { params }) => {
   const r = db.getRequest(params.id);
   if (!r) throw new HttpError(404, 'Not found');
   r.items.forEach((i) => { if (i.status === 'pending' || i.status === 'declined') i.status = 'approved'; });
-  r.status = 'processing';
-  db.updateRequest(r, { status: computeStatus(r) });
+  db.updateRequest(r, { status: computeStatus({ ...r, status: 'processing' }) });
   setImmediate(runOnce);
   send(res, 200, { request: r });
 }, { admin: true });
@@ -272,6 +312,7 @@ route('POST', '/api/requests/:id/retry', async (req, res, { params, session }) =
     if (i.status === 'failed' || i.status === 'waiting') { i.status = 'approved'; i.attempts = 0; i.error = ''; }
   });
   r.refreshSent = false;
+  r.notified = (r.notified || []).filter((e) => e !== 'failed'); // a new failure is worth a new email
   db.updateRequest(r, { status: computeStatus(r), error: '' });
   setImmediate(runOnce);
   send(res, 200, { request: r });
@@ -340,9 +381,37 @@ route('PUT', '/api/settings', async (req, res) => {
       throw new HttpError(400, `Not saved: ${e.message}`);
     }
   }
-  const changed = settings.save(b);
+  let changed;
+  try {
+    changed = settings.save(b);
+  } catch (e) {
+    throw new HttpError(e instanceof settings.InvalidSetting ? 400 : 500, e.message);
+  }
   console.log(`[settings] Saved${changed.length ? ': ' + changed.join(', ') : ' (no changes)'}`);
   send(res, 200, { settings: settings.view(), changed });
+}, { admin: true });
+
+// Sends a test email with the values in the form (the saved password is used if it wasn't changed)
+route('POST', '/api/settings/test/email', async (req, res) => {
+  const b = await readJson(req);
+  const to = settings.splitEmails(b.to)[0];
+  if (!b.smtpHost) throw new HttpError(400, 'Enter the mail server');
+  if (!b.emailFrom) throw new HttpError(400, 'Enter the sender address');
+  if (!isEmail(to)) throw new HttpError(400, 'Enter at least one valid address under "Notify about new requests" to send the test to');
+  const smtp = {
+    host: String(b.smtpHost).trim().replace(/^smtps?:\/\//i, ''),
+    port: Number(b.smtpPort) || 587,
+    security: ['starttls', 'tls', 'none'].includes(b.smtpSecurity) ? b.smtpSecurity : 'starttls',
+    user: String(b.smtpUser || '').trim(),
+    password: keyOrSaved(b.smtpPassword, config.smtpPassword),
+  };
+  try {
+    await notify.sendTest(smtp, String(b.emailFrom).trim(), to);
+  } catch (e) {
+    throw new HttpError(400, e.message);
+  }
+  console.log(`[email] Test email sent to ${to}`);
+  send(res, 200, { ok: true, to });
 }, { admin: true });
 
 settings.onChange((changed) => {
@@ -443,6 +512,7 @@ server.listen(config.port, () => {
   else if (!settings.isEmbyConfigured()) console.log('[settings] The Emby API key is not set up yet (Settings)');
   else emby.getIndex().catch(() => {});
   if (!settings.isLidarrConfigured()) console.log('[settings] Lidarr is not set up yet (Settings)');
+  if (settings.isEmailEnabled()) console.log(`[email] Notifications on, via ${config.smtpHost}:${config.smtpPort}`);
   startWorker();
 });
 

@@ -74,6 +74,7 @@ const ICON = {
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>',
   list: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
   gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+  bell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>',
   logout: '<svg viewBox="0 0 24 24" width="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5"><path d="M5 12.5 10 17 19 7"/></svg>',
   music: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>',
@@ -85,6 +86,7 @@ function shell(active, content) {
     ['home', '#/', 'Discover', ICON.home],
     ['search', '#/search', 'Search', ICON.search],
     ['requests', '#/requests', 'Requests', ICON.list],
+    ...(me.emailEnabled ? [['notifications', '#/notifications', 'Notifications', ICON.bell]] : []),
     ...(me.isAdmin ? [['settings', '#/settings', 'Settings', ICON.gear]] : []),
   ];
   return `
@@ -533,6 +535,42 @@ function settingsFormHtml(s) {
       </div>
     </div>
 
+    <div class="panel">
+      <h3><span class="dot" id="dot-email"></span> Email notifications</h3>
+      <p class="muted small panel-intro">Emails administrators when a request needs approval, and lets users get email about their own requests. Each user picks what they want under <i>Notifications</i>.</p>
+      <label class="toggle" style="color:var(--text)"><input type="checkbox" name="emailEnabled" ${s.emailEnabled ? 'checked' : ''}> Send email notifications</label>
+      <div id="email-opts" class="${s.emailEnabled ? '' : 'disabled-block'}" style="margin-top:16px">
+        <div class="form-grid cols3">
+          <div class="field"><label for="smtpHost">Mail server (SMTP)</label>
+            <input id="smtpHost" name="smtpHost" value="${esc(s.smtpHost)}" placeholder="smtp.gmail.com" spellcheck="false"></div>
+          <div class="field"><label for="smtpSecurity">Encryption</label>
+            <select id="smtpSecurity" name="smtpSecurity">
+              ${[['starttls', 'STARTTLS'], ['tls', 'SSL/TLS'], ['none', 'None']].map(([v, l]) => `<option value="${v}" ${s.smtpSecurity === v ? 'selected' : ''}>${l}</option>`).join('')}
+            </select></div>
+          <div class="field"><label for="smtpPort">Port</label>
+            <input id="smtpPort" name="smtpPort" type="number" min="1" max="65535" value="${esc(s.smtpPort || 587)}"></div>
+        </div>
+        <div class="form-grid">
+          <div class="field"><label for="smtpUser">Username</label>
+            <input id="smtpUser" name="smtpUser" value="${esc(s.smtpUser)}" autocomplete="off" spellcheck="false">
+            <div class="hint">Usually your full email address. Leave empty if the server doesn't need sign-in.</div></div>
+          <div class="field"><label for="smtpPassword">Password</label>
+            <input id="smtpPassword" name="smtpPassword" type="password" autocomplete="new-password" placeholder="${s.smtpPassword ? 'Unchanged' : ''}">
+            <div class="hint">For Gmail and Outlook, create an <i>app password</i> – your normal password won't work.</div></div>
+          <div class="field"><label for="emailFrom">Sender</label>
+            <input id="emailFrom" name="emailFrom" value="${esc(s.emailFrom)}" placeholder="Tonearr &lt;you@example.com&gt;" spellcheck="false">
+            <div class="hint">Many mail servers only accept the address you sign in with.</div></div>
+          <div class="field"><label for="appUrl">Tonearr address</label>
+            <input id="appUrl" name="appUrl" value="${esc(s.appUrl || location.origin)}" spellcheck="false">
+            <div class="hint">Used for links in the emails.</div></div>
+        </div>
+        <div class="field"><label for="adminEmails">Notify about new requests</label>
+          <input id="adminEmails" name="adminEmails" value="${esc(s.adminEmails)}" placeholder="admin@example.com, other@example.com" spellcheck="false">
+          <div class="hint">One or more addresses, separated by commas, that get an email when a request needs approval (only happens when requests aren't approved automatically). Test emails go to the first one.</div></div>
+        <div class="test-row"><button type="button" class="btn sm" id="testEmail">Send test email</button><span id="res-email" class="small"></span></div>
+      </div>
+    </div>
+
     <div class="savebar">
       <span class="muted small" id="save-msg">The Emby connection is tested before saving.</span>
       <button type="submit" class="btn primary">Save settings</button>
@@ -582,6 +620,34 @@ function bindSettingsForm(s, { onSaved } = {}) {
   };
   form.querySelectorAll('[data-test]').forEach((b) => (b.onclick = async () => { b.disabled = true; await test(b.dataset.test); b.disabled = false; }));
 
+  // Email
+  const emailValues = () => ({
+    emailEnabled: form.elements.emailEnabled.checked,
+    smtpHost: val('smtpHost'), smtpPort: val('smtpPort'), smtpSecurity: form.elements.smtpSecurity.value,
+    smtpUser: val('smtpUser'), smtpPassword: val('smtpPassword'),
+    emailFrom: val('emailFrom'), adminEmails: val('adminEmails'), appUrl: val('appUrl'),
+  });
+  form.elements.emailEnabled.onchange = (e) => document.getElementById('email-opts').classList.toggle('disabled-block', !e.target.checked);
+  // Switch to the usual port for the chosen encryption, unless a custom port has been entered
+  const PORTS = { starttls: '587', tls: '465', none: '25' };
+  form.elements.smtpSecurity.onchange = (e) => {
+    if (Object.values(PORTS).includes(form.elements.smtpPort.value)) form.elements.smtpPort.value = PORTS[e.target.value];
+  };
+  document.getElementById('testEmail').onclick = async (e) => {
+    e.target.disabled = true;
+    setRes('email', 'Sending…', true);
+    try {
+      const v = emailValues();
+      const r = await api('/settings/test/email', { method: 'POST', body: { ...v, to: v.adminEmails } });
+      setDot('email', true);
+      setRes('email', `✓ Sent to ${esc(r.to)} – check the inbox (and the spam folder)`, true);
+    } catch (err) {
+      setDot('email', false);
+      setRes('email', '✗ ' + esc(err.message), false);
+    }
+    e.target.disabled = false;
+  };
+
   // Test saved connections as soon as the page opens
   if (s.embyUrl && s.embyApiKey) test('emby', true);
   if (s.lidarrUrl && s.lidarrApiKey) test('lidarr', true);
@@ -598,6 +664,7 @@ function bindSettingsForm(s, { onSaved } = {}) {
       lidarrMetadataProfileId: form.elements.lidarrMetadataProfileId.value,
       autoApprove: form.elements.autoApprove.checked,
       appName: val('appName'), mbUserAgent: val('mbUserAgent'),
+      ...emailValues(),
     };
     try {
       const r = await api('/settings', { method: 'PUT', body });
@@ -612,7 +679,7 @@ function bindSettingsForm(s, { onSaved } = {}) {
 }
 
 async function renderSettings() {
-  $app.innerHTML = shell('settings', `<h1>Settings</h1><div class="muted" style="margin-bottom:20px">Connections to Emby and Lidarr. Changes take effect immediately.</div><div id="st">${spinner}</div>`);
+  $app.innerHTML = shell('settings', `<h1>Settings</h1><div class="muted" style="margin-bottom:20px">Connections to Emby, Lidarr and the mail server. Changes take effect immediately.</div><div id="st">${spinner}</div>`);
   bindShell();
   // Library panel – refreshes itself every few seconds while the release group lookup is running
   let libTimer = null;
@@ -660,6 +727,74 @@ async function renderSettings() {
   load().catch((e) => (document.getElementById('st').innerHTML = empty(e.message)));
 }
 
+// ---------- notifications (every user) ----------
+async function renderNotifications() {
+  $app.innerHTML = shell('notifications', `<h1>Notifications</h1><div class="muted" style="margin-bottom:20px">Get an email when something happens with your requests.</div><div id="nt">${spinner}</div>`);
+  bindShell();
+  const $nt = document.getElementById('nt');
+  let data;
+  try {
+    data = await api('/me/notifications');
+  } catch (e) {
+    $nt.innerHTML = empty(e.message);
+    return;
+  }
+  const { prefs, events, enabled } = data;
+  if (!enabled) {
+    $nt.innerHTML = empty('Email notifications are turned off.' + (me.isAdmin ? ' Turn them on under Settings → Email notifications.' : ''));
+    return;
+  }
+  $nt.innerHTML = `
+    <form class="settings" id="notform" autocomplete="off">
+      <div class="panel">
+        <label class="toggle" style="color:var(--text)"><input type="checkbox" name="notify" ${prefs.notify ? 'checked' : ''}> Email me about my requests</label>
+        <div id="notify-opts" class="${prefs.notify ? '' : 'disabled-block'}" style="margin-top:16px">
+          <div class="field" style="max-width:420px"><label for="email">Email address</label>
+            <input id="email" name="email" type="email" value="${esc(prefs.email)}" placeholder="you@example.com" autocomplete="email"></div>
+          <div class="field"><label>Email me when a request is…</label>
+            <div class="checks">${Object.entries(events).map(([k, label]) => `
+              <label class="toggle"><input type="checkbox" name="ev" value="${esc(k)}" ${prefs.events.includes(k) ? 'checked' : ''}> ${esc(label)}</label>`).join('')}
+            </div>
+            <div class="hint">You get each kind of email at most once per request.${me.isAdmin ? ' Emails about new requests that need approval are set up under Settings.' : ''}</div></div>
+        </div>
+      </div>
+      <div class="savebar">
+        <button type="button" class="btn ghost" id="sendTest" ${prefs.email ? '' : 'disabled'}>Send me a test email</button>
+        <button type="submit" class="btn primary">Save</button>
+      </div>
+    </form>`;
+  const form = document.getElementById('notform');
+  form.elements.notify.onchange = (e) => document.getElementById('notify-opts').classList.toggle('disabled-block', !e.target.checked);
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const btn = form.querySelector('[type=submit]');
+    btn.disabled = true;
+    try {
+      const body = {
+        notify: form.elements.notify.checked,
+        email: form.elements.email.value.trim(),
+        events: [...form.querySelectorAll('[name=ev]:checked')].map((c) => c.value),
+      };
+      const r = await api('/me/notifications', { method: 'PUT', body });
+      document.getElementById('sendTest').disabled = !r.prefs.email;
+      toast('Saved', 'ok');
+    } catch (err) {
+      toast(err.message, 'err');
+    }
+    btn.disabled = false;
+  };
+  document.getElementById('sendTest').onclick = async (e) => {
+    e.target.disabled = true;
+    try {
+      const r = await api('/me/notifications/test', { method: 'POST' });
+      toast(`Test email sent to ${r.to}`, 'ok');
+    } catch (err) {
+      toast(err.message, 'err');
+    }
+    e.target.disabled = false;
+  };
+}
+
 // ---------- router ----------
 let publicStatus = null;
 async function router() {
@@ -677,6 +812,7 @@ async function router() {
   if (path === '/search') return renderSearch();
   if (path === '/requests') return renderRequests();
   if (path === '/settings' && me.isAdmin) return renderSettings();
+  if (path === '/notifications') return renderNotifications();
   const m = path.match(/^\/artist\/([0-9a-f-]{36})$/i);
   if (m) return renderArtist(m[1]);
   location.hash = '#/';

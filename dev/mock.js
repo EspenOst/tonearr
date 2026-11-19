@@ -1,5 +1,5 @@
 // Fake Emby and Lidarr servers for local testing.
-//   node dev/mock.js   -> Emby on :18096, Lidarr on :18686
+//   node dev/mock.js   -> Emby on :18096, Lidarr on :18686, SMTP on :12525
 // Users: admin/admin (administrator), alice/alice (regular user)
 // Simulates: artist added -> album list fetched (from real MusicBrainz) -> search -> download -> shows up in Emby.
 import http from 'node:http';
@@ -139,3 +139,44 @@ http.createServer(async (req, res) => {
     json(res, 500, { message: e.message });
   }
 }).listen(18686, () => console.log('Mock Lidarr: http://localhost:18686  (API key: lidarr-key)'));
+
+// ---------- Fake mail server (SMTP, no encryption) ----------
+// Settings → Email notifications: server localhost, port 12525, encryption "None", any username/password.
+// Received emails are printed here.
+import net from 'node:net';
+net.createServer((sock) => {
+  let data = null;
+  let authStep = 0;
+  const say = (l) => sock.write(l + '\r\n');
+  say('220 mock-smtp ready');
+  let buf = '';
+  sock.on('data', (d) => {
+    buf += d.toString();
+    let i;
+    while ((i = buf.indexOf('\r\n')) >= 0) {
+      const line = buf.slice(0, i);
+      buf = buf.slice(i + 2);
+      if (data !== null) {
+        if (line !== '.') { data.push(line); continue; }
+        const raw = data.join('\n');
+        data = null;
+        const [head, body = ''] = raw.split('\n\n');
+        const h = (k) => head.match(new RegExp(`^${k}: (.*)$`, 'mi'))?.[1] || '';
+        const subject = h('Subject').replace(/=\?UTF-8\?B\?(.*?)\?=/g, (_, b) => Buffer.from(b, 'base64').toString());
+        console.log(`\n✉  Mock mail to ${h('To')} – ${subject}\n${Buffer.from(body.replace(/\s/g, ''), 'base64').toString().replace(/^/gm, '   ')}`);
+        say('250 queued');
+        continue;
+      }
+      if (authStep === 1) { authStep = 2; say('334 UGFzc3dvcmQ6'); continue; }
+      if (authStep === 2) { authStep = 0; say('235 ok'); continue; }
+      const cmd = line.split(' ')[0].toUpperCase();
+      if (cmd === 'EHLO') { say('250-mock-smtp'); say('250 AUTH PLAIN LOGIN'); }
+      else if (cmd === 'AUTH') { if (/LOGIN/i.test(line)) { authStep = 1; say('334 VXNlcm5hbWU6'); } else say('235 ok'); }
+      else if (cmd === 'DATA') { data = []; say('354 go ahead'); }
+      else if (cmd === 'QUIT') { say('221 bye'); sock.end(); }
+      else if (cmd === 'RCPT' && /bounce@/i.test(line)) say('550 no such user');
+      else say('250 ok');
+    }
+  });
+  sock.on('error', () => {});
+}).listen(12525, () => console.log('Mock SMTP:   localhost:12525  (no encryption)'));

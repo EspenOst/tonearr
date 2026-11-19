@@ -8,7 +8,7 @@ import { config } from './config.js';
 mkdirSync(config.dataDir, { recursive: true });
 const file = path.join(config.dataDir, 'db.json');
 
-let state = { sessions: {}, requests: [], nextId: 1 };
+let state = { sessions: {}, requests: [], users: {}, nextId: 1 };
 if (existsSync(file)) {
   try {
     state = { ...state, ...JSON.parse(readFileSync(file, 'utf8')) };
@@ -97,8 +97,18 @@ export function listRequests({ userId } = {}) {
   const list = userId ? state.requests.filter((r) => r.userId === userId) : state.requests;
   return [...list].sort((a, b) => b.id - a.id);
 }
+// Called when a request's overall status changes – used for email notifications
+const statusListeners = [];
+export const onRequestStatus = (fn) => statusListeners.push(fn);
+
 export function updateRequest(req, patch = {}) {
+  const prev = req.status;
   Object.assign(req, patch, { updatedAt: now() });
+  if ('status' in patch && patch.status !== prev) {
+    for (const fn of statusListeners) {
+      try { fn(req, prev); } catch (e) { console.error('[db] status listener failed:', e.message); }
+    }
+  }
   save();
   return req;
 }
@@ -116,4 +126,15 @@ export function itemStatusMap() {
     }
   }
   return map;
+}
+
+// ---------- User preferences (keyed by Emby user ID) ----------
+// { name, email, notify: boolean, events: [status, ...] }
+export function getUser(userId) {
+  return state.users[userId] || null;
+}
+export function setUser(userId, patch) {
+  state.users[userId] = { ...(state.users[userId] || {}), ...patch, updatedAt: now() };
+  save();
+  return state.users[userId];
 }

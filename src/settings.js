@@ -3,11 +3,12 @@
 import { mkdirSync, readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { config } from './config.js';
+import { parseAddress, isEmail } from './mailer.js';
 
 mkdirSync(config.dataDir, { recursive: true });
 const file = path.join(config.dataDir, 'settings.json');
 
-const SECRET = ['embyApiKey', 'lidarrApiKey'];
+const SECRET = ['embyApiKey', 'lidarrApiKey', 'smtpPassword'];
 const FIELDS = {
   appName: 'string',
   embyUrl: 'url',
@@ -19,6 +20,15 @@ const FIELDS = {
   lidarrMetadataProfileId: 'id',
   autoApprove: 'bool',
   mbUserAgent: 'string',
+  emailEnabled: 'bool',
+  smtpHost: 'host',
+  smtpPort: 'port',
+  smtpSecurity: ['starttls', 'tls', 'none'],
+  smtpUser: 'string',
+  smtpPassword: 'string',
+  emailFrom: 'from',
+  adminEmails: 'emails',
+  appUrl: 'url',
 };
 const MASK = '••••';
 
@@ -39,6 +49,14 @@ export const isSetupRequired = () => !config.embyUrl;
 // The API key is needed to read the library (what's "Available"); sign-in works without it.
 export const isEmbyConfigured = () => !!(config.embyUrl && config.embyApiKey);
 export const isLidarrConfigured = () => !!(config.lidarrUrl && config.lidarrApiKey);
+// Email is sent only when switched on and a server and sender are filled in
+export const isEmailEnabled = () => !!(config.emailEnabled && config.smtpHost && config.emailFrom);
+export const adminEmailList = () => splitEmails(config.adminEmails);
+
+export const splitEmails = (v) => String(v || '').split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean);
+
+/** A validation error – shown to the admin as-is. */
+export class InvalidSetting extends Error {}
 
 /** What an admin still has to fill in under Settings. */
 export function missingSettings() {
@@ -65,6 +83,7 @@ export function normalizeUrl(v) {
 export function view() {
   const out = {};
   for (const k of Object.keys(FIELDS)) out[k] = SECRET.includes(k) ? mask(config[k]) : config[k] ?? '';
+  if (config.smtpPassword) out.smtpPassword = MASK; // a password, unlike API keys, shouldn't reveal any characters
   return out;
 }
 
@@ -75,11 +94,33 @@ export function save(patch) {
     if (!(k in patch)) continue;
     let v = patch[k];
     if (SECRET.includes(k) && (!v || isMasked(v))) continue; // empty/masked = keep the saved key
-    if (type === 'url') v = normalizeUrl(v);
-    else if (type === 'id') v = Number(v) || null;
+    if (type === 'url') {
+      try { v = normalizeUrl(v); } catch (e) { throw new InvalidSetting(e.message); }
+    } else if (type === 'id') v = Number(v) || null;
     else if (type === 'bool') v = v === true || v === 'true';
-    else v = String(v ?? '').trim().slice(0, 500);
+    else if (type === 'port') {
+      v = Number(v);
+      if (!Number.isInteger(v) || v < 1 || v > 65535) throw new InvalidSetting('The mail server port must be a number between 1 and 65535');
+    } else if (Array.isArray(type)) {
+      if (!type.includes(v)) throw new InvalidSetting(`Invalid value for ${k}`);
+    } else if (type === 'host') {
+      v = String(v ?? '').trim().replace(/^smtps?:\/\//i, '').replace(/\/+$/, '');
+      if (v && !/^[A-Za-z0-9.-]+$/.test(v)) throw new InvalidSetting(`Invalid mail server: ${v}`);
+    } else if (type === 'from') {
+      v = String(v ?? '').trim().slice(0, 300);
+      if (v && !isEmail(parseAddress(v).address)) throw new InvalidSetting(`Invalid sender address: ${v} – use e.g. "Tonearr <tonearr@example.com>"`);
+    } else if (type === 'emails') {
+      const list = splitEmails(v);
+      const bad = list.filter((x) => !isEmail(x));
+      if (bad.length) throw new InvalidSetting(`Invalid email address: ${bad.join(', ')}`);
+      v = list.join(', ');
+    } else v = String(v ?? '').trim().slice(0, 500);
     clean[k] = v;
+  }
+  const enabled = 'emailEnabled' in clean ? clean.emailEnabled : config.emailEnabled;
+  const pick = (k) => (k in clean ? clean[k] : config[k]);
+  if (enabled && (!pick('smtpHost') || !pick('emailFrom'))) {
+    throw new InvalidSetting('To turn on email notifications, fill in the mail server and the sender address');
   }
   const changed = Object.keys(clean).filter((k) => clean[k] !== config[k]);
 
