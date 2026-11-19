@@ -39,7 +39,6 @@ const STATUS = {
   available: 'Available',
   failed: 'Failed',
   declined: 'Declined',
-  monitored: 'In Lidarr',
 };
 const badge = (status, progress) =>
   status ? `<span class="badge ${esc(status)}">${esc(STATUS[status] || status)}${status === 'downloading' && progress != null ? ` ${progress}%` : ''}</span>` : '';

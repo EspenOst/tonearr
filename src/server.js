@@ -71,9 +71,9 @@ function annotate(list, idx, reqMap, artistName, lidarrAlbums) {
     if (inEmby) { a.status = 'available'; continue; }
     const r = reqMap.get(a.mbid);
     if (r) { a.status = r.status; a.progress = r.progress; a.requestId = r.requestId; continue; }
-    if (la?.statistics?.trackFileCount > 0) a.status = 'downloaded';
-    else if (la?.monitored) a.status = 'monitored';
-    else a.status = null;
+    // Monitored in Lidarr but without files is still requestable: Lidarr may never have searched for it,
+    // and a request triggers that search
+    a.status = la?.statistics?.trackFileCount > 0 ? 'downloaded' : null;
   }
   return list;
 }

@@ -99,6 +99,7 @@ Data is stored in `./data` by default (`DATA_DIR`).
 - **Metadata profile:** Lidarr only knows about the release types included in the metadata profile. For users to request EPs and singles, the profile must include *EP* and *Single* (and optionally *Live* and *Compilation*). Otherwise those requests stay at "Waiting for Lidarr" and end up as "Failed" with an explanation.
 - If root folder and profiles are set to "First available", the app uses the first root folder and the first profiles in Lidarr.
 - New artists are added with *Monitor: None*. Only the selected albums are monitored. "Follow new releases" sets *Monitor New Albums: All* on the artist.
+- Albums that are monitored in Lidarr but have no files can still be requested. A request starts a search for them, since Lidarr doesn't necessarily search for monitored albums on its own.
 
 ## Email notifications
 
