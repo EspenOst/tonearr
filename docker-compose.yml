@@ -1,0 +1,24 @@
+# Tonearr – save this file in a folder of its own and run: docker compose up -d
+# You can also paste it into a container manager with a web UI (Portainer, Container Station, ...).
+#
+# Emby and Lidarr are set up in the web UI: the first sign-in asks for the Emby address,
+# and the rest is under Settings. Everything is stored in the data folder.
+services:
+  tonearr:
+    image: ghcr.io/espenost/tonearr:latest
+    container_name: tonearr
+    restart: unless-stopped
+    ports:
+      - "5056:5056"
+    volumes:
+      # Where the database and settings are stored. Change to any folder on the host.
+      # The container creates it and makes it writable for the app (uid 1000) on start.
+      - ./data:/data
+    environment:
+      TZ: Europe/Oslo # set to your time zone
+      # Optional: pre-fill the settings instead of using the web UI.
+      # Anything saved on the Settings page overrides these.
+      # EMBY_URL: http://192.168.1.50:8096
+      # EMBY_API_KEY: ...
+      # LIDARR_URL: http://192.168.1.10:8686
+      # LIDARR_API_KEY: ...

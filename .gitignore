@@ -1,0 +1,5 @@
+# Runtime data – contains API keys and sessions, never commit it
+data/
+.env
+node_modules/
+*.log

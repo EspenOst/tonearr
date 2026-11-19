@@ -1,0 +1,15 @@
+{
+  "name": "tonearr",
+  "version": "0.1.0",
+  "description": "Seerr-like request site for music: Emby sign-in, MusicBrainz search, Lidarr downloads",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "mock": "node dev/mock.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

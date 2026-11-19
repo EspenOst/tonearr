@@ -1,0 +1,14 @@
+# Build the image from the source code in this folder instead of pulling the published one.
+#   docker compose -f docker-compose.build.yml up -d --build
+services:
+  tonearr:
+    build: .
+    image: tonearr:local
+    container_name: tonearr
+    restart: unless-stopped
+    ports:
+      - "5056:5056"
+    volumes:
+      - ./data:/data
+    environment:
+      TZ: Europe/Oslo # set to your time zone
