@@ -84,6 +84,8 @@ export async function getArtistByMbid(mbid) {
   return (list || []).find((a) => a.foreignArtistId === mbid) || null;
 }
 
+export const listArtists = () => api('GET', '/artist');
+
 export async function getArtist(id) {
   return api('GET', `/artist/${id}`);
 }

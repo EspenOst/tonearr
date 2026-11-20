@@ -3,6 +3,7 @@
 A simple, Seerr-like request site for music.
 
 - **Sign in with your Emby account.** Emby administrators are administrators here too.
+- **Discover** suggests what to request: new and upcoming albums by artists you already have, their best-known albums you're missing, what's popular right now, and what other users have requested. Anything already on the server is left out.
 - **Search MusicBrainz** for artists, albums and songs.
 - **Artist page** with albums, EPs, singles and other releases. Pick what you want, click "Request", and optionally tick "Follow new releases".
 - **Lidarr** adds the artist without monitoring anything, then monitors and searches only for the albums you picked.
@@ -18,6 +19,7 @@ A simple, Seerr-like request site for music.
  Browser ──► Tonearr (:5056)
                ├─► Emby                sign-in + library index (every 5 min)
                ├─► MusicBrainz         search / artist / album list (max 1 req/sec, cached)
+               ├─► ListenBrainz        new/upcoming releases, popular albums and similar artists for Discover
                └─► Lidarr              add artist → monitor albums → AlbumSearch → queue/status
 ```
 
@@ -115,6 +117,27 @@ Click **Send test email** to check the setup before saving.
 
 Once email is on, every user gets a **Notifications** page. There they enter their email address and choose what to be told about: approved, declined, download started, downloaded, partly available, available or failed. Each kind of email is sent at most once per request. Email addresses are stored in `/data/db.json`.
 
+## Discover
+
+The start page has rows of suggestions:
+
+- **New releases:** albums and EPs from the last 90 days, newest first.
+- **Coming soon:** albums and EPs with a release date in the next 90 days. Requesting one monitors it in Lidarr, which grabs it once it is out.
+- **More from artists you play:** albums you don't have by the artists you play most in Emby.
+- **You might like:** the best-known albums by artists similar to the ones you play, that aren't on the server, in Lidarr or requested yet.
+- **Missing from the collection:** for each artist on the server, their best-known studio album that you don't have, classics first.
+- **Popular now:** the most played albums on ListenBrainz this month, one per artist.
+- **Requested by others:** the latest albums other users have requested (without their names).
+- **My recent requests.**
+
+New and upcoming releases come from ListenBrainz' public list of fresh releases (fetched every 6 hours), and *Popular now* from its public monthly chart (every 24 hours). Tonearr only fetches those lists and filters them locally. A new release is shown when its main artist is in the Emby library (with a MusicBrainz ID), in Lidarr, or in a request here. Only albums and EPs are shown, including live albums and soundtracks. Singles, compilations, remixes and the like are left out. To switch the ListenBrainz rows off, untick **Settings → Discover → Show suggestions from ListenBrainz**.
+
+*Missing from the collection* uses MusicBrainz: an album with many editions and reissues is usually a well-known one. Tonearr looks up the official studio albums of up to 300 artists – the ones requested here first, then the artists with the most albums in Emby – in the background at low priority, so searches always go first. With MusicBrainz' limit of one request per second, a large library takes a few minutes the first time. The answers are cached in `/data/artist-albums.json` and refreshed every 30 days; new artists are picked up within half an hour. Artists with more than 100 studio albums (classical composers, for example) are skipped, since there is no reliable way to rank them.
+
+The two personal rows are different for each user. Tonearr reads the user's play counts and favourites from Emby (recent plays count double, and favourite artists, albums and tracks add to an artist's score) and takes their 25 top artists; only artists with a MusicBrainz ID count. Their albums come from MusicBrainz, ranked like *Missing from the collection*, and are looked up before the rest of the collection. Similar artists for the 10 top artists come from ListenBrainz (cached in `/data/similar-artists.json` for 30 days). Only the artist IDs are sent – never user names or play counts. A user who hasn't played anything in Emby doesn't get these rows. The first time, the suggestions take a few minutes to look up; until then the rows say so. *You might like* is switched off together with the other ListenBrainz rows.
+
+An album is only shown once, on the first row that has it.
+
 ## Status from Emby
 
 Emby reads the MusicBrainz IDs that Lidarr writes to the files. Matching uses the release group ID, then the release ID, and finally artist + album title for albums without IDs.
@@ -134,6 +157,7 @@ Settings are saved to `/data/settings.json` from the web UI. Environment variabl
 | `LIDARR_METADATA_PROFILE_ID` | first | Metadata profile ID |
 | `AUTO_APPROVE` | `true` | `false` means an administrator must approve requests |
 | `MB_USER_AGENT` | generic | MusicBrainz asks for contact info here |
+| `LISTENBRAINZ_ENABLED` | `true` | `false` hides the ListenBrainz rows on Discover (new, upcoming, you might like, popular) |
 | `EMAIL_ENABLED` | `false` | Turn on email notifications |
 | `SMTP_HOST` / `SMTP_PORT` | – / `587` | Mail server |
 | `SMTP_SECURITY` | `starttls` | `starttls`, `tls` (port 465) or `none` |

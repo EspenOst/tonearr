@@ -192,6 +192,17 @@ function renderLogin() {
 }
 
 // ---------- discover / home ----------
+const SHELVES = {
+  new: ['New releases', 'From artists on the server, in Lidarr or requested here'],
+  upcoming: ['Coming soon', 'Request now and Lidarr grabs it when it is out'],
+  yours: ['More from artists you play', 'Based on what you listen to in Emby'],
+  similar: ['You might like', 'Artists similar to the ones you play, not on the server yet'],
+  missing: ['Missing from the collection', 'The best-known albums by artists on the server'],
+  popular: ['Popular now', 'Most played on ListenBrainz this month'],
+  others: ['Requested by others', ''],
+};
+const DATED_SHELVES = new Set(['new', 'upcoming']);
+
 async function renderHome() {
   $app.innerHTML = shell('home', `
     <div class="welcome">
@@ -199,28 +210,54 @@ async function renderHome() {
       <div class="muted">Find artists and albums, and request them for the server.</div>
       <form class="searchbox big-search" id="bigsearch">${ICON.search}<input name="q" placeholder="What do you want to listen to?" autocomplete="off"></form>
     </div>
-    <h2>${me.isAdmin ? 'Recent requests' : 'My recent requests'}</h2>
-    <div id="recent">${spinner}</div>`);
+    <div id="shelves">${spinner}</div>
+    <div id="recent"></div>`);
   bindShell();
   document.getElementById('bigsearch').onsubmit = (e) => {
     e.preventDefault();
     const q = e.target.q.value.trim();
     if (q) location.hash = `#/search?q=${encodeURIComponent(q)}&type=artist`;
   };
-  try {
-    const { requests } = await api('/requests');
-    const items = requests.flatMap((r) => r.items.map((i) => ({ ...i, artistName: r.artistName, artistMbid: r.artistMbid }))).slice(0, 24);
-    document.getElementById('recent').innerHTML = items.length
-      ? `<div class="grid">${items.map((i) => `
-          <a class="card" href="#/artist/${esc(i.artistMbid)}">
-            ${cover(i.mbid, i.title)}
-            <div class="badge-slot">${badge(i.status, i.progress)}</div>
-            <div class="body"><div class="title">${esc(i.title)}</div><div class="sub">${esc(i.artistName)}${i.year ? ' · ' + i.year : ''}</div></div>
-          </a>`).join('')}</div>`
-      : empty('No requests yet. Search for an artist to get started!');
-  } catch (e) {
-    document.getElementById('recent').innerHTML = empty(e.message);
+  const [discover, mine] = await Promise.allSettled([api('/discover'), api('/requests?scope=mine')]);
+  if (!document.getElementById('shelves')) return; // the user has navigated away
+
+  const $shelves = document.getElementById('shelves');
+  $shelves.innerHTML = '';
+  if (discover.status === 'rejected') $shelves.innerHTML = `<p class="muted small">${esc(discover.reason.message)}</p>`;
+  for (const s of discover.value?.shelves || []) {
+    if (!s.items.length && !s.error && !s.pending) continue;
+    const [title, hint] = SHELVES[s.id] || [s.id, ''];
+    const el = document.createElement('section');
+    el.innerHTML = `
+      <h2 class="shelf-head">${esc(title)}${hint ? ` <span class="count">${esc(hint)}</span>` : ''}</h2>
+      ${s.error ? `<p class="muted small">Couldn't load this list: ${esc(s.error)}</p>`
+        : !s.items.length ? '<p class="muted small">Finding suggestions – check back in a few minutes.</p>'
+        : `<div class="shelf">${s.items.map((a) => albumCard(a, { showArtist: true, showDate: DATED_SHELVES.has(s.id) })).join('')}</div>`}`;
+    $shelves.append(el);
+    bindAlbumButtons(el, s.items);
   }
+
+  const items = mine.status === 'fulfilled'
+    ? mine.value.requests.flatMap((r) => r.items.map((i) => ({ ...i, artistName: r.artistName, artistMbid: r.artistMbid }))).slice(0, 24)
+    : [];
+  const hasShelves = !!$shelves.children.length;
+  document.getElementById('recent').innerHTML = items.length
+    ? `<h2>My recent requests</h2><div class="shelf">${items.map((i) => `
+        <a class="card" href="#/artist/${esc(i.artistMbid)}">
+          ${cover(i.mbid, i.title)}
+          <div class="badge-slot">${badge(i.status, i.progress)}</div>
+          <div class="body"><div class="title">${esc(i.title)}</div><div class="sub">${esc(i.artistName)}${i.year ? ' · ' + i.year : ''}</div></div>
+        </a>`).join('')}</div>`
+    : mine.status === 'rejected' ? empty(mine.reason.message)
+    : hasShelves ? '' : empty('No requests yet. Search for an artist to get started!');
+}
+
+// "4 Dec", with the year only when it isn't this year
+function fmtDay(iso) {
+  const d = new Date(iso + 'T12:00:00');
+  if (isNaN(d)) return '';
+  const opts = { day: 'numeric', month: 'short', ...(d.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) };
+  return d.toLocaleDateString('en-GB', opts);
 }
 
 // ---------- search ----------
@@ -279,14 +316,22 @@ async function renderSearch() {
   }
 }
 
-function albumCard(a, { showArtist = false } = {}) {
+function albumCard(a, { showArtist = false, showDate = false } = {}) {
+  const when = showDate && a.date ? fmtDay(a.date) : a.year;
+  // With a date there is little room on small cards – "Album" is the default, so only other types are named
+  const type = showDate && a.date && a.type === 'Album' ? '' : typeLabel(a.type);
   return `
     <div class="card" data-mbid="${esc(a.mbid)}">
       ${cover(a.mbid, a.title)}
       <div class="badge-slot">${badge(a.status, a.progress)}</div>
       <div class="body">
         <div class="title" title="${esc(a.title)}">${esc(a.title)}</div>
-        <div class="sub">${showArtist && a.artist ? `<a href="#/artist/${esc(a.artist.mbid)}">${esc(a.artistCredit)}</a> · ` : ''}${esc(typeLabel(a.type))}${a.year ? ' · ' + a.year : ''}</div>
+        <div class="sub">${[
+          showArtist && a.artist ? `<a href="#/artist/${esc(a.artist.mbid)}">${esc(a.artistCredit || a.artist.name)}</a>` : '',
+          esc(type),
+          esc(when || ''),
+        ].filter(Boolean).join(' · ')}</div>
+        ${a.because ? `<div class="sub because" title="Similar to ${esc(a.because)}">Similar to ${esc(a.because)}</div>` : ''}
       </div>
       ${!a.status && a.artist ? `<div class="actions"><button class="btn sm primary" style="width:100%" data-req="${esc(a.mbid)}">Request</button></div>` : ''}
     </div>`;
@@ -535,6 +580,12 @@ function settingsFormHtml(s) {
     </div>
 
     <div class="panel">
+      <h3>Discover</h3>
+      <label class="toggle" style="color:var(--text)"><input type="checkbox" name="listenbrainzEnabled" ${s.listenbrainzEnabled ? 'checked' : ''}> Show suggestions from ListenBrainz</label>
+      <div class="hint" style="margin:6px 0 0 25px">New and upcoming releases by artists on the server, in Lidarr or requested here, what is popular right now, and artists similar to the ones each user plays. The public lists are fetched every 6 and 24 hours and filtered here. For similar artists, the IDs of the artists users play most are looked up – never user names or play counts.</div>
+    </div>
+
+    <div class="panel">
       <h3><span class="dot" id="dot-email"></span> Email notifications</h3>
       <p class="muted small panel-intro">Emails administrators when a request needs approval, and lets users get email about their own requests. Each user picks what they want under <i>Notifications</i>.</p>
       <label class="toggle" style="color:var(--text)"><input type="checkbox" name="emailEnabled" ${s.emailEnabled ? 'checked' : ''}> Send email notifications</label>
@@ -662,6 +713,7 @@ function bindSettingsForm(s, { onSaved } = {}) {
       lidarrQualityProfileId: form.elements.lidarrQualityProfileId.value,
       lidarrMetadataProfileId: form.elements.lidarrMetadataProfileId.value,
       autoApprove: form.elements.autoApprove.checked,
+      listenbrainzEnabled: form.elements.listenbrainzEnabled.checked,
       appName: val('appName'), mbUserAgent: val('mbUserAgent'),
       ...emailValues(),
     };

@@ -91,13 +91,18 @@ async function buildIndex() {
     releaseGroups: new Map(), // MB release-group id -> album info
     releases: new Map(), // MB release id -> album info
     names: new Map(), // "artist|album" -> album info
-    artists: new Map(), // MB artist id -> { id, name }
-    artistNames: new Map(),
+    artists: new Map(), // MB artist id -> { embyId, name, mbid }
+    artistNames: new Map(), // normalized name -> { embyId, name, mbid }
+    artistsByEmbyId: new Map(), // Emby item id -> { embyId, name, mbid }
     releaseOnly: [], // albums with a release ID but no release group ID: [{ releaseId, info }]
+    albumsByArtist: new Map(), // normalized album artist name -> number of albums (artists only on guest tracks have none)
     albumCount: 0,
   };
   for (const a of albums?.Items || []) {
     const info = { embyId: a.Id, name: a.Name, artist: a.AlbumArtist || a.AlbumArtists?.[0]?.Name || '' };
+    for (const n of new Set([info.artist, ...(a.AlbumArtists || []).map((x) => x.Name)].filter(Boolean).map(norm))) {
+      idx.albumsByArtist.set(n, (idx.albumsByArtist.get(n) || 0) + 1);
+    }
     const p = a.ProviderIds || {};
     if (p.MusicBrainzReleaseGroup) idx.releaseGroups.set(p.MusicBrainzReleaseGroup.toLowerCase(), info);
     if (p.MusicBrainzAlbum) idx.releases.set(p.MusicBrainzAlbum.toLowerCase(), info);
@@ -112,9 +117,10 @@ async function buildIndex() {
   }
   for (const a of artists?.Items || []) {
     const p = a.ProviderIds || {};
-    const info = { embyId: a.Id, name: a.Name };
-    if (p.MusicBrainzArtist) idx.artists.set(p.MusicBrainzArtist.toLowerCase(), info);
+    const info = { embyId: a.Id, name: a.Name, mbid: p.MusicBrainzArtist?.toLowerCase() || null };
+    if (info.mbid) idx.artists.set(info.mbid, info);
     idx.artistNames.set(norm(a.Name), info);
+    idx.artistsByEmbyId.set(a.Id, info);
   }
   releaseGroups.applyTo(idx);
   index = idx;
@@ -159,4 +165,62 @@ export function findArtist(idx, { mbid, name }) {
   if (mbid && idx.artists.has(mbid.toLowerCase())) return idx.artists.get(mbid.toLowerCase());
   if (name) return idx.artistNames.get(norm(name)) || null;
   return null;
+}
+
+// ---------- Listening history ----------
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const RECENT_DAYS = 90;
+
+/** The MusicBrainz artist of a track, album or artist item – the album artist first, so guests don't count. */
+function artistOf(item, idx) {
+  if (item.Type === 'MusicArtist') {
+    const info = idx.artistsByEmbyId.get(item.Id);
+    const mbid = info?.mbid || item.ProviderIds?.MusicBrainzArtist?.toLowerCase();
+    return mbid ? { mbid, name: info?.name || item.Name } : null;
+  }
+  const p = item.ProviderIds || {};
+  for (const ids of [p.MusicBrainzAlbumArtist, p.MusicBrainzArtist]) {
+    const mbid = String(ids || '').split(/[/;,]/)[0].trim().toLowerCase();
+    if (UUID.test(mbid)) return { mbid, name: idx.artists.get(mbid)?.name || item.AlbumArtist || item.ArtistItems?.[0]?.Name || '' };
+  }
+  for (const a of [...(item.AlbumArtists || []), ...(item.ArtistItems || [])]) {
+    const info = idx.artistsByEmbyId.get(a.Id) || idx.artistNames.get(norm(a.Name));
+    if (info?.mbid) return { mbid: info.mbid, name: info.name };
+  }
+  return null;
+}
+
+/**
+ * What an Emby user plays, per artist: MB artist id -> { mbid, name, plays, recentPlays, favourite,
+ * favouriteAlbums, favouriteTracks }. Artists without a MusicBrainz ID are left out.
+ */
+export async function listening(userId, idx) {
+  const base = `/Users/${encodeURIComponent(userId)}/Items?Recursive=true&Fields=ProviderIds&EnableImages=false`;
+  const [played, favourites] = await Promise.all([
+    embyFetch(`${base}&IncludeItemTypes=Audio&Filters=IsPlayed&SortBy=PlayCount,DatePlayed&SortOrder=Descending&Limit=5000`),
+    embyFetch(`${base}&IncludeItemTypes=Audio,MusicAlbum,MusicArtist&Filters=IsFavorite&Limit=2000`),
+  ]);
+  const out = new Map();
+  const entry = (item) => {
+    const a = artistOf(item, idx);
+    if (!a) return null;
+    if (!out.has(a.mbid)) out.set(a.mbid, { ...a, plays: 0, recentPlays: 0, favourite: false, favouriteAlbums: 0, favouriteTracks: 0 });
+    return out.get(a.mbid);
+  };
+  const recent = Date.now() - RECENT_DAYS * 864e5;
+  for (const t of played?.Items || []) {
+    const e = entry(t);
+    if (!e) continue;
+    const n = t.UserData?.PlayCount || 1;
+    e.plays += n;
+    if (Date.parse(t.UserData?.LastPlayedDate || '') > recent) e.recentPlays += n;
+  }
+  for (const item of favourites?.Items || []) {
+    const e = entry(item);
+    if (!e) continue;
+    if (item.Type === 'MusicArtist') e.favourite = true;
+    else if (item.Type === 'MusicAlbum') e.favouriteAlbums++;
+    else e.favouriteTracks++;
+  }
+  return out;
 }

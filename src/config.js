@@ -44,6 +44,9 @@ export const config = {
   // MusicBrainz requires an identifiable User-Agent. Consider adding contact info.
   mbUserAgent: env('MB_USER_AGENT', `Tonearr/${pkg.version} ( self-hosted music request app )`),
 
+  // Discover: new and upcoming releases from ListenBrainz (only a public list is fetched – nothing is sent)
+  listenbrainzEnabled: bool('LISTENBRAINZ_ENABLED', true),
+
   // Email notifications (off by default) – usually set up in the web UI
   emailEnabled: bool('EMAIL_ENABLED', false),
   smtpHost: env('SMTP_HOST'),

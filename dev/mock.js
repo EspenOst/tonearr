@@ -20,6 +20,24 @@ const embyArtists = [
   { Id: 'a2', Name: 'Metallica', ProviderIds: { MusicBrainzArtist: '65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab' } },
 ];
 
+// What each user has played and marked as favourite (admin has played nothing)
+const daysAgo = (n) => new Date(Date.now() - n * 864e5).toISOString();
+const track = (artist, name, plays, lastPlayed) => ({
+  Id: 't-' + name, Name: name, Type: 'Audio', AlbumArtist: artist.Name, ProviderIds: {},
+  AlbumArtists: [{ Name: artist.Name, Id: artist.Id }], ArtistItems: [{ Name: artist.Name, Id: artist.Id }],
+  UserData: { PlayCount: plays, LastPlayedDate: lastPlayed, Played: true },
+});
+const listening = {
+  'u-alice': {
+    played: [
+      track(embyArtists[0], 'Paranoid Android', 42, daysAgo(2)),
+      track(embyArtists[0], 'Karma Police', 30, daysAgo(10)),
+      track(embyArtists[1], 'Battery', 8, daysAgo(400)),
+    ],
+    favourites: [{ ...embyArtists[1], Type: 'MusicArtist' }],
+  },
+};
+
 // Lidarr state
 const artists = [];
 const albums = [];
@@ -40,6 +58,13 @@ http.createServer(async (req, res) => {
   if (p === '/Sessions/Logout') return json(res, 204);
   if (req.headers['x-emby-token'] !== 'emby-key') return json(res, 401, {});
   if (p === '/System/Info') return json(res, 200, { ServerName: 'Mock Emby', Version: '4.9.0' });
+  const userItems = p.match(/^\/Users\/([^/]+)\/Items$/);
+  if (userItems) {
+    const l = listening[decodeURIComponent(userItems[1])] || { played: [], favourites: [] };
+    const filters = u.searchParams.get('Filters') || '';
+    const items = filters.includes('IsFavorite') ? l.favourites : filters.includes('IsPlayed') ? l.played : [];
+    return json(res, 200, { Items: items, TotalRecordCount: items.length });
+  }
   if (p === '/Items') {
     const t = u.searchParams.get('IncludeItemTypes');
     { const items = t === 'MusicAlbum' ? embyAlbums : embyArtists; return json(res, 200, { Items: items, TotalRecordCount: items.length }); }

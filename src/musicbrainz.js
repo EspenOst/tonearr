@@ -80,6 +80,8 @@ export const isBlockedArtist = (mbid, name) =>
   /^\s*\[unknown\]\s*$/i.test(name || '');
 const hasBlockedArtist = (ac = []) => ac.some((c) => isBlockedArtist(c.artist?.id, c.artist?.name) || isBlockedArtist(null, c.name));
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
 // Lucene escaping for the search string
 const esc = (q) => q.replace(/([+\-&|!(){}[\]^"~*?:\\/])/g, '\\$1');
 
@@ -207,6 +209,40 @@ export async function getArtistReleaseGroups(mbid) {
 export async function getReleaseGroup(mbid) {
   const rg = await mb(`release-group/${encodeURIComponent(mbid)}?inc=artist-credits`);
   return rg ? mapReleaseGroup(rg) : null;
+}
+
+/**
+ * An artist's official studio albums, with the number of releases (editions, reissues) in each –
+ * a decent measure of how well-known an album is. Runs at low priority.
+ * `total` is how many matched; above 100 the list is an arbitrary selection.
+ */
+export async function artistStudioAlbums(mbid) {
+  if (!UUID.test(mbid)) return { total: 0, albums: [] };
+  const query = `arid:${mbid} AND primarytype:album AND status:official AND NOT secondarytype:*`;
+  const data = await mb(`release-group?query=${encodeURIComponent(query)}&limit=100`, { priority: 'low', useCache: false });
+  const albums = (data?.['release-groups'] || [])
+    .filter((rg) => !hasBlockedArtist(rg['artist-credit']))
+    .map((rg) => ({ ...mapReleaseGroup(rg), releases: rg.count || 0 }));
+  return { total: data?.count || 0, albums };
+}
+
+/**
+ * Looks up many release groups (type, date, main artist) with one search request per 50 IDs.
+ * Runs at low priority. Returns Map<releaseGroupId, release group>; unknown IDs and
+ * Various Artists releases are left out.
+ */
+export async function lookupReleaseGroups(ids) {
+  ids = [...new Set(ids.map((id) => String(id).toLowerCase()))].filter((id) => UUID.test(id));
+  const out = new Map();
+  for (let i = 0; i < ids.length; i += 50) {
+    const batch = ids.slice(i, i + 50);
+    const query = batch.map((id) => 'rgid:' + id).join(' OR ');
+    const data = await mb(`release-group?query=${encodeURIComponent(query)}&limit=100`, { priority: 'low' });
+    for (const rg of data?.['release-groups'] || []) {
+      if (batch.includes(rg.id) && !hasBlockedArtist(rg['artist-credit'])) out.set(rg.id, mapReleaseGroup(rg));
+    }
+  }
+  return out;
 }
 
 /**

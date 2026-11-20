@@ -89,6 +89,7 @@ h2 .count { color: var(--muted); font-size: 14px; font-weight: 500; }
 .card .body { padding: 10px 12px 12px; }
 .card .title { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card .sub { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card .sub.because { margin-top: 2px; font-style: italic; }
 .card .badge-slot { position: absolute; top: 8px; left: 8px; }
 .card .actions { padding: 0 12px 12px; }
 .card.selectable { cursor: pointer; }
@@ -172,6 +173,9 @@ details.more[open] > summary h2::after { content: "▾"; }
 .spinner { width: 34px; height: 34px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; margin: 60px auto; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .spin-inline { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; margin-right: 8px; vertical-align: -1px; }
+/* Discover: a horizontally scrolling row of cards */
+.shelf { display: grid; grid-auto-flow: column; grid-auto-columns: 165px; gap: 18px; overflow-x: auto; padding: 4px 2px 12px; scroll-snap-type: x proximity; scrollbar-width: thin; }
+.shelf > .card { scroll-snap-align: start; }
 .welcome { padding: 40px 0 10px; }
 .welcome h1 { font-size: 34px; }
 .big-search { max-width: 700px; margin-top: 20px; }
@@ -217,6 +221,9 @@ details.more[open] > summary h2::after { content: "▾"; }
   .hero .poster { width: 120px; height: 120px; }
   .hero h1 { font-size: 28px; }
   .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+  .shelf { grid-auto-columns: 140px; gap: 12px; }
+  .shelf-head { flex-wrap: wrap; row-gap: 2px; }
+  .shelf-head .count { flex-basis: 100%; }
   .actionbar { top: 59px; }
   .req-head { flex-wrap: wrap; }
   .req-head .btns { width: 100%; justify-content: flex-start; }

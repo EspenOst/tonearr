@@ -11,6 +11,7 @@ import * as mb from './musicbrainz.js';
 import * as lidarr from './lidarr.js';
 import { startWorker, runOnce, computeStatus } from './worker.js';
 import * as notify from './notify.js';
+import * as discover from './discover.js';
 import { isEmail } from './mailer.js';
 
 const PUBLIC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public');
@@ -199,6 +200,43 @@ route('GET', '/api/artist/:mbid', async (req, res, { params }) => {
     artist: { ...artist, ...images, inLibrary: !!emby.findArtist(idx, { mbid: artist.mbid, name: artist.name }) || releaseGroups.some((r) => r.status === 'available'),inLidarr: !!lidarrArtist, monitorNew: lidarrArtist?.monitorNewItems === 'all' },
     releaseGroups,
   });
+});
+
+// ---------- discover ----------
+const SHELF_SIZE = 30;
+
+route('GET', '/api/discover', async (req, res, { session }) => {
+  const idx = await libraryIndex();
+  const reqMap = db.itemStatusMap();
+  // Albums already on the server are left out – the point is finding something to request
+  const mark = (list) => annotate(list, idx, reqMap);
+  const shelf = (list) => mark(list).filter((a) => a.status !== 'available');
+  const shelves = [];
+  const [releases, personal, popular] = await Promise.allSettled([
+    discover.releaseShelves(idx),
+    idx ? discover.personalShelves(session.userId, idx, mark, SHELF_SIZE * 2) : null,
+    discover.popularNow(),
+  ]);
+  if (releases.status === 'rejected') shelves.push({ id: 'new', items: [], error: releases.reason.message });
+  else if (releases.value) {
+    shelves.push({ id: 'new', items: shelf(releases.value.newReleases) });
+    shelves.push({ id: 'upcoming', items: shelf(releases.value.upcoming) });
+  }
+  if (personal.status === 'rejected') shelves.push({ id: 'yours', items: [], error: personal.reason.message });
+  else if (personal.value) {
+    shelves.push({ id: 'yours', ...personal.value.yours });
+    if (personal.value.similar) shelves.push({ id: 'similar', ...personal.value.similar });
+  }
+  shelves.push({ id: 'missing', items: discover.missingFromCollection(idx, mark, SHELF_SIZE * 2) });
+  if (popular.status === 'rejected') shelves.push({ id: 'popular', items: [], error: popular.reason.message });
+  else if (popular.value) shelves.push({ id: 'popular', items: shelf(popular.value) });
+  shelves.push({ id: 'others', items: mark(discover.requestedByOthers(session.userId, SHELF_SIZE)) });
+  // An album shows up once, on the first shelf that has it
+  const seen = new Set();
+  for (const s of shelves) {
+    s.items = s.items.filter((a) => !seen.has(a.mbid) && seen.add(a.mbid)).slice(0, SHELF_SIZE);
+  }
+  send(res, 200, { shelves });
 });
 
 // ---------- the user's own notification settings ----------
@@ -420,6 +458,7 @@ settings.onChange((changed) => {
     emby.getIndex().catch(() => {});
   }
   if (changed.some((k) => k.startsWith('lidarr'))) lidarr.resetDefaults();
+  if (changed.includes('listenbrainzEnabled')) discover.warmUp();
   setImmediate(runOnce);
 });
 
@@ -513,6 +552,7 @@ server.listen(config.port, () => {
   else emby.getIndex().catch(() => {});
   if (!settings.isLidarrConfigured()) console.log('[settings] Lidarr is not set up yet (Settings)');
   if (settings.isEmailEnabled()) console.log(`[email] Notifications on, via ${config.smtpHost}:${config.smtpPort}`);
+  discover.warmUp();
   startWorker();
 });
 

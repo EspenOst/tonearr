@@ -20,6 +20,7 @@ const FIELDS = {
   lidarrMetadataProfileId: 'id',
   autoApprove: 'bool',
   mbUserAgent: 'string',
+  listenbrainzEnabled: 'bool',
   emailEnabled: 'bool',
   smtpHost: 'host',
   smtpPort: 'port',
