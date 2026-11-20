@@ -115,6 +115,8 @@ function mapReleaseGroup(rg) {
     date: rg['first-release-date'] || '',
     artistCredit: credit(rg['artist-credit']),
     artist: mainArtist(rg['artist-credit']),
+    // Users' average rating (0–5) and number of votes – only with inc=ratings
+    rating: rg.rating?.value != null ? { value: rg.rating.value, votes: rg.rating['votes-count'] || 0 } : null,
   };
 }
 
@@ -192,12 +194,12 @@ export async function getArtist(mbid) {
   };
 }
 
-/** All release groups (albums, EPs, singles) for an artist. */
+/** All release groups (albums, EPs, singles) for an artist, with ratings. */
 export async function getArtistReleaseGroups(mbid) {
   const all = [];
   let offset = 0;
   for (let page = 0; page < 5; page++) {
-    const data = await mb(`release-group?artist=${encodeURIComponent(mbid)}&type=album|ep|single&limit=100&offset=${offset}`);
+    const data = await mb(`release-group?artist=${encodeURIComponent(mbid)}&type=album|ep|single&inc=ratings&limit=100&offset=${offset}`);
     const list = data?.['release-groups'] || [];
     all.push(...list);
     offset += list.length;

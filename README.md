@@ -5,7 +5,7 @@ A simple, Seerr-like request site for music.
 - **Sign in with your Emby account.** Emby administrators are administrators here too.
 - **Discover** suggests what to request: new and upcoming albums by artists you already have, their best-known albums you're missing, what's popular right now, and what other users have requested. Anything already on the server is left out.
 - **Search MusicBrainz** for artists, albums and songs.
-- **Artist page** with albums, EPs, singles and other releases. Pick what you want, click "Request", and optionally tick "Follow new releases".
+- **Artist page** with albums, EPs, singles and other releases, newest first, with the rating from MusicBrainz users (shown from 3 votes). Pick what you want, click "Request", and optionally tick "Follow new releases".
 - **Lidarr** adds the artist without monitoring anything, then monitors and searches only for the albums you picked.
 - **Status** comes from Lidarr (searching, downloading with %, downloaded) and from the Emby library (available). Anything already in Emby is marked "Available" in search and can't be requested again.
 - **No "Various Artists" or "[unknown]".** Compilations credited to Various Artists, and releases by MusicBrainz' placeholder for an unknown artist, are hidden from search and can't be requested, since Lidarr would add them as one huge artist.

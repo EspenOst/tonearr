@@ -316,6 +316,13 @@ async function renderSearch() {
   }
 }
 
+// MusicBrainz users' rating. Hidden with fewer than 3 votes – one or two say little.
+function stars(rating) {
+  if (!rating || rating.votes < 3) return '';
+  const v = (Math.round(rating.value * 10) / 10).toFixed(1);
+  return ` · <span class="rating" title="Rated ${v} of 5 by ${rating.votes} MusicBrainz users">★ ${v}</span>`;
+}
+
 function albumCard(a, { showArtist = false, showDate = false } = {}) {
   const when = showDate && a.date ? fmtDay(a.date) : a.year;
   // With a date there is little room on small cards – "Album" is the default, so only other types are named
@@ -395,7 +402,7 @@ async function renderArtist(mbid) {
         ${cover(r.mbid, r.title)}
         <div class="badge-slot">${badge(r.status, r.progress)}</div>
         ${requestable(r) ? `<div class="check">${ICON.check}</div>` : ''}
-        <div class="body"><div class="title" title="${esc(r.title)}">${esc(r.title)}</div><div class="sub">${esc(typeLabel(r.type))}${r.year ? ' · ' + r.year : ''}</div></div>
+        <div class="body"><div class="title" title="${esc(r.title)}">${esc(r.title)}</div><div class="sub">${esc(typeLabel(r.type))}${r.year ? ' · ' + r.year : ''}${stars(r.rating)}</div></div>
       </div>`).join('')}</div>`;
     return i === 3 ? `<details class="more"><summary>${head}</summary>${grid}</details>` : head + grid;
   };

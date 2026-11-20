@@ -89,6 +89,7 @@ h2 .count { color: var(--muted); font-size: 14px; font-weight: 500; }
 .card .body { padding: 10px 12px 12px; }
 .card .title { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card .sub { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card .sub .rating { color: var(--yellow); }
 .card .sub.because { margin-top: 2px; font-style: italic; }
 .card .badge-slot { position: absolute; top: 8px; left: 8px; }
 .card .actions { padding: 0 12px 12px; }
