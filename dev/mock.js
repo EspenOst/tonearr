@@ -97,7 +97,10 @@ http.createServer(async (req, res) => {
       const mbid = u.searchParams.get('term').replace('lidarr:', '');
       const r = await fetch(`https://musicbrainz.org/ws/2/artist/${mbid}?fmt=json`, { headers: { 'User-Agent': UA } });
       const a = await r.json();
-      return json(res, 200, [{ foreignArtistId: mbid, artistName: a.name, overview: `${a.name} is an artist (mock description from Lidarr).`, images: [] }]);
+      // Real pictures from Lidarr's metadata server, like Lidarr itself
+      const meta = await fetch(`https://api.lidarr.audio/api/v0.4/artist/${mbid}`).then((x) => x.json()).catch(() => ({}));
+      const images = (meta.images || []).map((i) => ({ coverType: i.CoverType.toLowerCase(), remoteUrl: i.remoteUrl }));
+      return json(res, 200, [{ foreignArtistId: mbid, artistName: a.name || meta.artistname, overview: `${a.name || meta.artistname} is an artist (mock description from Lidarr).`, images }]);
     }
     if (p === '/artist' && m === 'GET') return json(res, 200, artists.filter((a) => !u.searchParams.get('mbId') || a.foreignArtistId === u.searchParams.get('mbId')));
     if (p === '/artist' && m === 'POST') {

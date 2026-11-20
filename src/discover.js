@@ -5,9 +5,9 @@
 //  - Missing from the collection: the best-known studio albums by artists on the server, measured by
 //    how many editions MusicBrainz has of each. Looked up per artist in the background (at low
 //    priority, so searches go first) and cached in data/artist-albums.json.
-//  - For each user: missing albums by the artists they play most in Emby, and the best-known albums
-//    by similar artists that aren't on the server (ListenBrainz' similar artists, cached in
-//    data/similar-artists.json). Play counts never leave the server – only artist IDs are looked up.
+//  - For each user: missing albums by the artists they play most in Emby, and similar artists that
+//    aren't on the server (ListenBrainz' similar artists, cached in data/similar-artists.json, with
+//    pictures from Lidarr). Play counts never leave the server – only artist IDs are looked up.
 // Release types come from MusicBrainz (ListenBrainz only gives the primary type, or none at all).
 // ListenBrainz' per-artist popularity would be better, but it needs an auth token.
 import { mkdirSync, readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs';
@@ -220,7 +220,7 @@ async function lookUpAlbums(artist) {
 }
 
 // One background job looks up albums: first artists someone is waiting for (urgent: the artists
-// a user plays and their similar artists), then the rest of the collection.
+// a user plays most), then the rest of the collection.
 const job = { running: false, timer: null, urgent: new Map() };
 function scheduleArtists(ms) {
   clearTimeout(job.timer);
@@ -286,7 +286,7 @@ async function lookUpSimilar(artist) {
   };
 }
 
-/** Looks up similar artists in the background, then queues their albums. */
+/** Looks up similar artists in the background, then their pictures. */
 function needSimilar(artists) {
   const todo = artists.filter((a) => similarStore.stale(a.mbid));
   if (!todo.length || similarJob || !config.listenbrainzEnabled) return;
@@ -304,16 +304,50 @@ function needSimilar(artists) {
     if (done) {
       similarStore.save();
       console.log(`[discover] Similar artists: ${done} artist(s) done`);
-      // Queue the albums of the new suggestions, so they are ready on the next visit
+      // Fetch pictures of the new suggestions, so they are ready on the next visit
       const idx = await emby.getIndex().catch(() => null);
       const known = await knownArtists(idx);
-      for (const p of profiles.values()) if (p.artists) needAlbums(similarTo(p, known));
+      for (const p of profiles.values()) if (p.artists) needImages(similarTo(p, known));
     }
     return done;
   })().catch(() => 0).then((done) => {
     // After a failure, wait before trying again
     setTimeout(() => { similarJob = null; }, done ? 0 : RETRY_AFTER);
   });
+}
+
+// ---------- Artist pictures ----------
+// From Lidarr's metadata (fanart.tv / TheAudioDB), like on the artist page. Without Lidarr the
+// cards get a coloured placeholder.
+// artists: mbid -> { at, image }
+const imageStore = artistStore('artist-images.json', 30 * 864e5);
+const imageJob = { running: false, queue: new Map() };
+
+// fanart.tv has a 200 px preview of every image – the originals are often 500 kB or more
+const smallImage = (url) => url?.replace(/^https:\/\/assets\.fanart\.tv\/fanart\//, 'https://assets.fanart.tv/preview/') || null;
+
+async function needImages(artists) {
+  if (!isLidarrConfigured()) return;
+  for (const a of artists) if (imageStore.stale(a.mbid)) imageJob.queue.set(a.mbid, a);
+  if (imageJob.running || !imageJob.queue.size) return;
+  imageJob.running = true;
+  let done = 0;
+  try {
+    while (imageJob.queue.size) {
+      const [a] = imageJob.queue.values();
+      imageJob.queue.delete(a.mbid);
+      const found = await lidarr.lookupArtist(a.mbid);
+      const img = (type) => found?.images?.find((i) => i.coverType === type)?.remoteUrl;
+      imageStore.artists[a.mbid] = { at: Date.now(), image: smallImage(img('poster') || img('fanart')) };
+      if (++done % 10 === 0) imageStore.save();
+    }
+  } catch (e) {
+    console.error(`[discover] Artist pictures: stopped after ${done} artist(s): ${e.message}`);
+    imageJob.queue.clear(); // try again on a later visit
+  } finally {
+    if (done) imageStore.save();
+    imageJob.running = false;
+  }
 }
 
 // ---------- What each user plays ----------
@@ -399,7 +433,7 @@ function pickAlbums(artists, annotate, limit, rounds = 1) {
     const albums = albumStore.artists[artist.mbid]?.albums || [];
     // Our own spelling of the name, so matching against Emby and the request use the same one
     const list = annotate(albums.map(({ releases, ...a }) => ({ ...a, artist: { mbid: artist.mbid, name: artist.name } })));
-    return list.filter((a) => !a.status).map((a) => (artist.because ? { ...a, because: artist.because } : a));
+    return list.filter((a) => !a.status);
   });
   const out = [];
   for (let round = 0; round < rounds; round++) {
@@ -409,8 +443,8 @@ function pickAlbums(artists, annotate, limit, rounds = 1) {
 }
 
 /**
- * The user's two shelves: missing albums by the artists they play most, and albums by similar
- * artists not on the server. Null when the user hasn't played anything yet.
+ * The user's two shelves: missing albums by the artists they play most, and similar artists not
+ * on the server (kind: 'artist'). Null when the user hasn't played anything yet.
  * `pending` means suggestions are still being looked up.
  */
 export async function personalShelves(userId, idx, annotate, limit) {
@@ -423,10 +457,9 @@ export async function personalShelves(userId, idx, annotate, limit) {
     const sources = profile.artists.slice(0, SIMILAR_FROM);
     needSimilar(sources);
     const similar = similarTo(profile, await knownArtists(idx));
-    needAlbums(similar);
-    const items = pickAlbums(similar, annotate, limit);
-    const waiting = sources.some((a) => similarStore.stale(a.mbid)) || similar.some((a) => albumStore.stale(a.mbid));
-    shelves.similar = { items, pending: !items.length && waiting };
+    needImages(similar);
+    const items = similar.slice(0, limit).map((a) => ({ mbid: a.mbid, name: a.name, because: a.because, image: imageStore.artists[a.mbid]?.image || null }));
+    shelves.similar = { kind: 'artist', items, pending: !items.length && sources.some((a) => similarStore.stale(a.mbid)) };
   }
   return shelves;
 }

@@ -208,16 +208,10 @@ async function renderHome() {
     <div class="welcome">
       <h1>Hi, ${esc(me.name)} 👋</h1>
       <div class="muted">Find artists and albums, and request them for the server.</div>
-      <form class="searchbox big-search" id="bigsearch">${ICON.search}<input name="q" placeholder="What do you want to listen to?" autocomplete="off"></form>
     </div>
     <div id="shelves">${spinner}</div>
     <div id="recent"></div>`);
   bindShell();
-  document.getElementById('bigsearch').onsubmit = (e) => {
-    e.preventDefault();
-    const q = e.target.q.value.trim();
-    if (q) location.hash = `#/search?q=${encodeURIComponent(q)}&type=artist`;
-  };
   const [discover, mine] = await Promise.allSettled([api('/discover'), api('/requests?scope=mine')]);
   if (!document.getElementById('shelves')) return; // the user has navigated away
 
@@ -232,7 +226,8 @@ async function renderHome() {
       <h2 class="shelf-head">${esc(title)}${hint ? ` <span class="count">${esc(hint)}</span>` : ''}</h2>
       ${s.error ? `<p class="muted small">Couldn't load this list: ${esc(s.error)}</p>`
         : !s.items.length ? '<p class="muted small">Finding suggestions – check back in a few minutes.</p>'
-        : `<div class="shelf">${s.items.map((a) => albumCard(a, { showArtist: true, showDate: DATED_SHELVES.has(s.id) })).join('')}</div>`}`;
+        : s.kind === 'artist' ? `<div class="shelf">${s.items.map(similarArtistCard).join('')}</div>`
+        : `<div class="shelf">${s.items.map((a) => albumCard(a, { showArtist: true, showDate: DATED_SHELVES.has(s.id), linkArtist: true })).join('')}</div>`}`;
     $shelves.append(el);
     bindAlbumButtons(el, s.items);
   }
@@ -250,6 +245,15 @@ async function renderHome() {
         </a>`).join('')}</div>`
     : mine.status === 'rejected' ? empty(mine.reason.message)
     : hasShelves ? '' : empty('No requests yet. Search for an artist to get started!');
+}
+
+function similarArtistCard(a) {
+  return `
+    <a class="card artist-card" href="#/artist/${esc(a.mbid)}">
+      ${a.image ? `<img class="round" loading="lazy" src="${esc(a.image)}" alt="" data-ph="${esc(a.name)}">` : placeholder(a.name, 'round')}
+      <div class="title" title="${esc(a.name)}">${esc(a.name)}</div>
+      <div class="sub" title="Similar to ${esc(a.because)}">Similar to ${esc(a.because)}</div>
+    </a>`;
 }
 
 // "4 Dec", with the year only when it isn't this year
@@ -323,22 +327,25 @@ function stars(rating) {
   return ` · <span class="rating" title="Rated ${v} of 5 by ${rating.votes} MusicBrainz users">★ ${v}</span>`;
 }
 
-function albumCard(a, { showArtist = false, showDate = false } = {}) {
+// linkArtist: the whole card links to the artist page (the title's link is stretched over it);
+// the Request button sits on top and still works
+function albumCard(a, { showArtist = false, showDate = false, linkArtist = false } = {}) {
   const when = showDate && a.date ? fmtDay(a.date) : a.year;
   // With a date there is little room on small cards – "Album" is the default, so only other types are named
   const type = showDate && a.date && a.type === 'Album' ? '' : typeLabel(a.type);
+  const link = linkArtist && a.artist ? `#/artist/${esc(a.artist.mbid)}` : '';
+  const artistName = esc(a.artistCredit || a.artist?.name || '');
   return `
-    <div class="card" data-mbid="${esc(a.mbid)}">
+    <div class="card${link ? ' linked' : ''}" data-mbid="${esc(a.mbid)}">
       ${cover(a.mbid, a.title)}
       <div class="badge-slot">${badge(a.status, a.progress)}</div>
       <div class="body">
-        <div class="title" title="${esc(a.title)}">${esc(a.title)}</div>
+        <div class="title" title="${esc(a.title)}">${link ? `<a class="stretched" href="${link}">${esc(a.title)}</a>` : esc(a.title)}</div>
         <div class="sub">${[
-          showArtist && a.artist ? `<a href="#/artist/${esc(a.artist.mbid)}">${esc(a.artistCredit || a.artist.name)}</a>` : '',
+          showArtist && a.artist ? (link ? artistName : `<a href="#/artist/${esc(a.artist.mbid)}">${artistName}</a>`) : '',
           esc(type),
           esc(when || ''),
         ].filter(Boolean).join(' · ')}</div>
-        ${a.because ? `<div class="sub because" title="Similar to ${esc(a.because)}">Similar to ${esc(a.because)}</div>` : ''}
       </div>
       ${!a.status && a.artist ? `<div class="actions"><button class="btn sm primary" style="width:100%" data-req="${esc(a.mbid)}">Request</button></div>` : ''}
     </div>`;

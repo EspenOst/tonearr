@@ -124,7 +124,7 @@ The start page has rows of suggestions:
 - **New releases:** albums and EPs from the last 90 days, newest first.
 - **Coming soon:** albums and EPs with a release date in the next 90 days. Requesting one monitors it in Lidarr, which grabs it once it is out.
 - **More from artists you play:** albums you don't have by the artists you play most in Emby.
-- **You might like:** the best-known albums by artists similar to the ones you play, that aren't on the server, in Lidarr or requested yet.
+- **You might like:** artists similar to the ones you play that aren't on the server, in Lidarr or requested yet. Click one to see their albums.
 - **Missing from the collection:** for each artist on the server, their best-known studio album that you don't have, classics first.
 - **Popular now:** the most played albums on ListenBrainz this month, one per artist.
 - **Requested by others:** the latest albums other users have requested (without their names).
@@ -134,7 +134,7 @@ New and upcoming releases come from ListenBrainz' public list of fresh releases 
 
 *Missing from the collection* uses MusicBrainz: an album with many editions and reissues is usually a well-known one. Tonearr looks up the official studio albums of up to 300 artists – the ones requested here first, then the artists with the most albums in Emby – in the background at low priority, so searches always go first. With MusicBrainz' limit of one request per second, a large library takes a few minutes the first time. The answers are cached in `/data/artist-albums.json` and refreshed every 30 days; new artists are picked up within half an hour. Artists with more than 100 studio albums (classical composers, for example) are skipped, since there is no reliable way to rank them.
 
-The two personal rows are different for each user. Tonearr reads the user's play counts and favourites from Emby (recent plays count double, and favourite artists, albums and tracks add to an artist's score) and takes their 25 top artists; only artists with a MusicBrainz ID count. Their albums come from MusicBrainz, ranked like *Missing from the collection*, and are looked up before the rest of the collection. Similar artists for the 10 top artists come from ListenBrainz (cached in `/data/similar-artists.json` for 30 days). Only the artist IDs are sent – never user names or play counts. A user who hasn't played anything in Emby doesn't get these rows. The first time, the suggestions take a few minutes to look up; until then the rows say so. *You might like* is switched off together with the other ListenBrainz rows.
+The two personal rows are different for each user. Tonearr reads the user's play counts and favourites from Emby (recent plays count double, and favourite artists, albums and tracks add to an artist's score) and takes their 25 top artists; only artists with a MusicBrainz ID count. Their albums come from MusicBrainz, ranked like *Missing from the collection*, and are looked up before the rest of the collection. Similar artists for the 10 top artists come from ListenBrainz (cached in `/data/similar-artists.json` for 30 days), with pictures from Lidarr (cached in `/data/artist-images.json`). Only the artist IDs are sent – never user names or play counts. A user who hasn't played anything in Emby doesn't get these rows. The first time, the suggestions take a few minutes to look up; until then the rows say so. *You might like* is switched off together with the other ListenBrainz rows.
 
 An album is only shown once, on the first row that has it.
 
