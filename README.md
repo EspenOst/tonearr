@@ -140,7 +140,7 @@ An album is only shown once, on the first row that has it.
 
 ## Status from Emby
 
-Emby reads the MusicBrainz IDs that Lidarr writes to the files. Matching uses the release group ID, then the release ID, and finally artist + album title for albums without IDs.
+Emby reads the MusicBrainz IDs that Lidarr writes to the files. Matching uses the release group ID, then the release ID, and finally artist + album title for albums without IDs. If Lidarr has downloaded an album but Emby has different IDs for it – Emby looks albums up by name itself when the files have no MusicBrainz tags, and sometimes picks another release – an album in Emby with the same artist and title counts as well.
 
 Some albums in Emby only have a release ID (one specific edition) and no release group ID. Tonearr looks up the release group for these in MusicBrainz in the background, about 50 albums per request, so even a large library is done in a minute or two. The answers are cached in `/data/release-groups.json`, so each album is only looked up once. Progress and results are shown under **Settings → Library and status**. Searches always go before these lookups. For the most reliable matching, let Lidarr write tags to the files (*Settings → Metadata → Write Metadata to Audio Files*) so Emby gets both IDs. After Lidarr has imported an album, it shows "Downloaded" until Emby has scanned the library. Consider enabling real-time monitoring for the music library in Emby.
 

@@ -167,6 +167,33 @@ async function lidarrArtistMap() {
   return lidarrArtists.map;
 }
 
+let lidarrAlbumsCache = { map: null, at: 0 };
+
+/**
+ * Release group id -> Lidarr album (release IDs and file count), for every album in Lidarr. Lets
+ * Discover see what Lidarr has downloaded, like the artist page does. Null without Lidarr.
+ */
+export async function lidarrAlbums() {
+  if (!isLidarrConfigured()) return null;
+  if (Date.now() - lidarrAlbumsCache.at < LIDARR_TTL) return lidarrAlbumsCache.map;
+  try {
+    const list = await lidarr.listAlbums();
+    const map = new Map();
+    for (const a of list || []) {
+      if (!a.foreignAlbumId) continue;
+      map.set(a.foreignAlbumId, {
+        releases: (a.releases || []).map((r) => ({ foreignReleaseId: r.foreignReleaseId })),
+        statistics: { trackFileCount: a.statistics?.trackFileCount || 0 },
+      });
+    }
+    lidarrAlbumsCache = { map, at: Date.now() };
+  } catch (e) {
+    console.error(`[discover] Could not read albums from Lidarr: ${e.message}`);
+    lidarrAlbumsCache.at = Date.now(); // don't retry on every page view
+  }
+  return lidarrAlbumsCache.map;
+}
+
 /** MBID -> name for every artist in Emby, in Lidarr or in a request that wasn't declined. */
 async function knownArtists(idx) {
   const map = new Map(await lidarrArtistMap());

@@ -95,7 +95,9 @@ export async function syncStatuses() {
       if (item.status === 'available' || item.status === 'declined') continue;
       const before = JSON.stringify([item.status, item.progress]);
 
-      const inEmby = emby.findAlbum(idx, { rgMbid: item.mbid, releaseIds: item.releaseIds || [], artistName: req.artistName, title: item.title });
+      // Once Lidarr has the files, an album with the same name in Emby counts too – Emby's IDs can be wrong
+      const inEmby = emby.findAlbum(idx, { rgMbid: item.mbid, releaseIds: item.releaseIds || [], artistName: req.artistName, title: item.title })
+        || (item.status === 'downloaded' && emby.findAlbumByName(idx, req.artistName, item.title));
       if (inEmby) {
         item.status = 'available';
         item.embyId = inEmby.embyId;

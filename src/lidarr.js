@@ -85,6 +85,8 @@ export async function getArtistByMbid(mbid) {
 }
 
 export const listArtists = () => api('GET', '/artist');
+/** Every album Lidarr knows about, for all artists. */
+export const listAlbums = () => api('GET', '/album');
 
 export async function getArtist(id) {
   return api('GET', `/artist/${id}`);

@@ -14,10 +14,13 @@ const embyAlbums = [
   { Id: 'e2', Name: '72 Seasons', AlbumArtist: 'Metallica', ProviderIds: { MusicBrainzAlbum: '180078e3-41b8-49f4-a534-5867cce7435d' } },
   // A release ID MusicBrainz doesn't know – shows up as "not found"
   { Id: 'e3', Name: 'Unknown Album', AlbumArtist: 'Nobody', ProviderIds: { MusicBrainzAlbum: '00000000-0000-4000-8000-000000000000' } },
+  // Downloaded by Lidarr, but Emby has the ID of another album with a similar name (a 2018 compilation)
+  { Id: 'e4', Name: 'Led Zeppelin', AlbumArtist: 'Led Zeppelin', ProviderIds: { MusicBrainzAlbum: 'eca4f64f-78af-471d-86fe-24ed1b3a3e6b' } },
 ];
 const embyArtists = [
   { Id: 'a1', Name: 'Radiohead', ProviderIds: { MusicBrainzArtist: 'a74b1b7f-71a5-4011-9441-d0b5e4122711' } },
   { Id: 'a2', Name: 'Metallica', ProviderIds: { MusicBrainzArtist: '65f4f0c5-ef9e-490c-aee3-909e7ae6b2ab' } },
+  { Id: 'a3', Name: 'Led Zeppelin', ProviderIds: { MusicBrainzArtist: '678d88b2-87b0-403b-b63d-5da7465aecc3' } },
 ];
 
 // What each user has played and marked as favourite (admin has played nothing)
@@ -42,6 +45,9 @@ const listening = {
 const artists = [];
 const albums = [];
 let nextId = 1;
+// Led Zeppelin is already in Lidarr, with the debut album downloaded (see album e4 in Emby)
+artists.push({ id: nextId++, foreignArtistId: '678d88b2-87b0-403b-b63d-5da7465aecc3', artistName: 'Led Zeppelin', monitored: true, monitorNewItems: 'none' });
+albums.push({ id: nextId++, artistId: 1, foreignAlbumId: '0f18ec88-aa87-38a9-8a65-f03d81763560', title: 'Led Zeppelin', monitored: true, files: 10, releases: [] });
 
 const json = (res, status, data) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(data === undefined ? '' : JSON.stringify(data)); };
 const body = async (req) => { const c = []; for await (const x of req) c.push(x); const s = Buffer.concat(c).toString(); return s ? JSON.parse(s) : {}; };
@@ -126,8 +132,9 @@ http.createServer(async (req, res) => {
       return json(res, 200, a);
     }
     if (p === '/album' && m === 'GET') {
+      // Without artistId: every album in Lidarr, like the real API
       const id = Number(u.searchParams.get('artistId'));
-      return json(res, 200, albums.filter((a) => a.artistId === id).map((a) => ({ ...a, statistics: stats(a) })));
+      return json(res, 200, albums.filter((a) => !id || a.artistId === id).map((a) => ({ ...a, statistics: stats(a) })));
     }
     if (p === '/album/monitor' && m === 'PUT') {
       const b = await body(req);

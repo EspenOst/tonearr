@@ -68,13 +68,16 @@ function annotate(list, idx, reqMap, artistName, lidarrAlbums) {
     const la = lidarrAlbums?.get(a.mbid);
     // Lidarr knows the release IDs (editions) – Emby files are sometimes tagged with only those
     const releaseIds = (la?.releases || []).map((r) => r.foreignReleaseId).filter(Boolean);
-    const inEmby = emby.findAlbum(idx, { rgMbid: a.mbid, releaseIds, artistName: a.artist?.name || artistName, title: a.title });
+    const name = a.artist?.name || artistName;
+    const downloaded = la?.statistics?.trackFileCount > 0;
+    const inEmby = emby.findAlbum(idx, { rgMbid: a.mbid, releaseIds, artistName: name, title: a.title })
+      || (downloaded && emby.findAlbumByName(idx, name, a.title));
     if (inEmby) { a.status = 'available'; continue; }
     const r = reqMap.get(a.mbid);
     if (r) { a.status = r.status; a.progress = r.progress; a.requestId = r.requestId; continue; }
     // Monitored in Lidarr but without files is still requestable: Lidarr may never have searched for it,
     // and a request triggers that search
-    a.status = la?.statistics?.trackFileCount > 0 ? 'downloaded' : null;
+    a.status = downloaded ? 'downloaded' : null;
   }
   return list;
 }
@@ -208,9 +211,10 @@ const SHELF_SIZE = 30;
 route('GET', '/api/discover', async (req, res, { session }) => {
   const idx = await libraryIndex();
   const reqMap = db.itemStatusMap();
-  // Albums already on the server are left out – the point is finding something to request
-  const mark = (list) => annotate(list, idx, reqMap);
-  const shelf = (list) => mark(list).filter((a) => a.status !== 'available');
+  // Albums already on the server or downloaded by Lidarr are left out – the point is finding something to request
+  const lidarrAlbums = await discover.lidarrAlbums();
+  const mark = (list) => annotate(list, idx, reqMap, undefined, lidarrAlbums);
+  const shelf = (list) => mark(list).filter((a) => a.status !== 'available' && a.status !== 'downloaded');
   const shelves = [];
   const [releases, personal, popular] = await Promise.allSettled([
     discover.releaseShelves(idx),

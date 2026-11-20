@@ -90,7 +90,8 @@ async function buildIndex() {
   const idx = {
     releaseGroups: new Map(), // MB release-group id -> album info
     releases: new Map(), // MB release id -> album info
-    names: new Map(), // "artist|album" -> album info
+    names: new Map(), // "artist|album" -> album info, for albums without MusicBrainz IDs
+    allNames: new Map(), // "artist|album" -> album info, for every album
     artists: new Map(), // MB artist id -> { embyId, name, mbid }
     artistNames: new Map(), // normalized name -> { embyId, name, mbid }
     artistsByEmbyId: new Map(), // Emby item id -> { embyId, name, mbid }
@@ -108,10 +109,11 @@ async function buildIndex() {
     if (p.MusicBrainzAlbum) idx.releases.set(p.MusicBrainzAlbum.toLowerCase(), info);
     if (p.MusicBrainzAlbum && !p.MusicBrainzReleaseGroup) idx.releaseOnly.push({ releaseId: p.MusicBrainzAlbum.toLowerCase(), info });
     // Name matching only as a fallback for albums without a MusicBrainz ID (avoids false matches on identical titles)
-    if (!p.MusicBrainzReleaseGroup && !p.MusicBrainzAlbum) {
-      for (const artistName of [info.artist, ...(a.AlbumArtists || []).map((x) => x.Name)]) {
-        if (artistName) idx.names.set(norm(artistName) + '|' + norm(a.Name), info);
-      }
+    for (const artistName of [info.artist, ...(a.AlbumArtists || []).map((x) => x.Name)]) {
+      if (!artistName) continue;
+      const key = norm(artistName) + '|' + norm(a.Name);
+      idx.allNames.set(key, info);
+      if (!p.MusicBrainzReleaseGroup && !p.MusicBrainzAlbum) idx.names.set(key, info);
     }
     idx.albumCount++;
   }
@@ -158,6 +160,16 @@ export function findAlbum(idx, { rgMbid, releaseIds = [], artistName, title }) {
   for (const r of releaseIds) if (idx.releases.has(r.toLowerCase())) return idx.releases.get(r.toLowerCase());
   if (artistName && title) return idx.names.get(norm(artistName) + '|' + norm(title)) || null;
   return null;
+}
+
+/**
+ * An album in Emby with this artist and title, whatever its IDs. Only for albums Lidarr has
+ * downloaded: then a name match is safe, and Emby's IDs are sometimes wrong (looked up by Emby
+ * itself when the files have no MusicBrainz tags).
+ */
+export function findAlbumByName(idx, artistName, title) {
+  if (!idx || !artistName || !title) return null;
+  return idx.allNames.get(norm(artistName) + '|' + norm(title)) || null;
 }
 
 export function findArtist(idx, { mbid, name }) {
