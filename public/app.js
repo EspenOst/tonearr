@@ -424,18 +424,16 @@ async function renderArtist(mbid) {
           <h1>${esc(artist.name)}</h1>
           <div class="meta">${meta.map(esc).join(' · ')}
             ${artist.inLibrary ? '<span class="badge lib">On the server</span>' : ''}
-            ${artist.inLidarr ? '<span class="badge monitored">In Lidarr</span>' : ''}
-            ${artist.monitorNew && !artist.canFollow ? '<span class="badge monitored">Following new releases</span>' : ''}</div>
+            ${artist.inLidarr ? '<span class="badge monitored">In Lidarr</span>' : ''}</div>
           ${artist.genres?.length ? `<div class="genres">${artist.genres.map((g) => `<span class="genre">${esc(g)}</span>`).join('')}</div>` : ''}
           ${artist.overview ? `<p class="overview" id="overview">${esc(artist.overview)}</p>` : ''}
-          ${artist.canFollow ? `<label class="toggle follow" title="Lidarr monitors the artist and grabs new albums when they come out"><input type="checkbox" id="follow" ${artist.monitorNew ? 'checked' : ''}> Follow new releases</label>` : ''}
         </div>
       </div>
     </div>
     <div class="actionbar">
       <button class="btn" id="selAlbums">Select all albums and EPs</button>
       <button class="btn ghost" id="selNone">Clear selection</button>
-      ${artist.canFollow ? '' : `<label class="toggle"><input type="checkbox" id="monitorNew" ${artist.monitorNew ? 'checked disabled' : ''}> Follow new releases</label>`}
+      <label class="toggle" title="Lidarr monitors the artist and grabs new albums when they come out"><input type="checkbox" id="monitorNew" ${artist.monitorNew ? 'checked disabled' : ''}> Follow new releases</label>
       <span class="grow"></span>
       <button class="btn primary" id="doRequest" disabled>Request selected (0)</button>
     </div>
@@ -456,25 +454,10 @@ async function renderArtist(mbid) {
   };
   document.getElementById('selNone').onclick = () => { selected.clear(); update(); };
   document.getElementById('overview')?.addEventListener('click', (e) => e.target.classList.toggle('open'));
-  // Takes effect right away in Lidarr – no request needed
-  const $follow = document.getElementById('follow');
-  if ($follow) $follow.onchange = async () => {
-    const follow = $follow.checked;
-    $follow.disabled = true;
-    try {
-      const r = await api(`/artist/${encodeURIComponent(artist.mbid)}/follow`, { method: 'PUT', body: { follow } });
-      $follow.checked = r.monitorNew;
-      toast(follow ? `Following new releases from ${artist.name}` : `No longer following new releases from ${artist.name}`, 'ok');
-    } catch (e) {
-      $follow.checked = !follow;
-      toast(e.message, 'err');
-    }
-    $follow.disabled = false;
-  };
   $btn.onclick = async () => {
     $btn.disabled = true;
     const albums = releaseGroups.filter((r) => selected.has(r.mbid)).map((r) => ({ mbid: r.mbid, title: r.title, type: r.type, year: r.year }));
-    const ok = await submitRequest(artist, albums, !!document.getElementById('monitorNew')?.checked);
+    const ok = await submitRequest(artist, albums, document.getElementById('monitorNew').checked);
     if (ok) renderArtist(mbid);
     else $btn.disabled = false;
   };
@@ -525,7 +508,8 @@ async function loadRequests(silent = false) {
         ${first ? cover(first.mbid, r.artistName, 'thumb') : placeholder(r.artistName, 'thumb')}
         <div class="info">
           <div class="title"><a href="#/artist/${esc(r.artistMbid)}">${esc(r.artistName)}</a> ${badge(r.status)}</div>
-          <div class="muted small">${r.items.length} ${r.items.length === 1 ? 'release' : 'releases'} · ${esc(r.userName)} · ${fmtDate(r.createdAt)}${r.monitorNew ? ' · following new releases' : ''}</div>
+          <div class="muted small">${r.items.length} ${r.items.length === 1 ? 'release' : 'releases'} · ${esc(r.userName)} · ${fmtDate(r.createdAt)}${r.monitorNew && !(me.isAdmin && r.status === 'pending') ? ' · following new releases' : ''}</div>
+          ${me.isAdmin && r.status === 'pending' ? `<label class="toggle small" title="Lidarr monitors the artist and grabs new albums when they come out"><input type="checkbox" data-follow="${r.id}" ${r.monitorNew ? 'checked' : ''}> Follow new releases</label>` : ''}
         </div>
         <div class="btns">
           ${me.isAdmin && r.status === 'pending' ? `<button class="btn sm green" data-act="approve" data-id="${r.id}">Approve</button><button class="btn sm red" data-act="decline" data-id="${r.id}">Decline</button>` : ''}
@@ -543,6 +527,19 @@ async function loadRequests(silent = false) {
     </div>`;
   }).join('')}</div>`;
 
+  // Admins can change this before approving
+  $list.querySelectorAll('[data-follow]').forEach((c) => {
+    c.onchange = async () => {
+      c.disabled = true;
+      try {
+        await api(`/requests/${c.dataset.follow}`, { method: 'PATCH', body: { monitorNew: c.checked } });
+      } catch (e) {
+        c.checked = !c.checked;
+        toast(e.message, 'err');
+      }
+      c.disabled = false;
+    };
+  });
   $list.querySelectorAll('[data-act]').forEach((b) => {
     b.onclick = async () => {
       const { act, id } = b.dataset;

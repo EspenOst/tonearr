@@ -152,7 +152,6 @@ img.round { object-fit: cover; display: block; background: var(--card-hover); }
 .actionbar .grow { flex: 1; }
 .toggle { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; color: var(--muted); font-size: 14px; user-select: none; }
 .toggle input { width: 17px; height: 17px; accent-color: var(--accent); }
-.hero .toggle.follow { color: #c7cbe0; margin-top: 12px; }
 details.more > summary { cursor: pointer; list-style: none; }
 details.more > summary::-webkit-details-marker { display: none; }
 details.more > summary h2::after { content: "▸"; color: var(--muted); font-size: 14px; }
@@ -164,6 +163,8 @@ details.more[open] > summary h2::after { content: "▾"; }
 .req-head .thumb { width: 64px; height: 64px; border-radius: 10px; object-fit: cover; flex: none; }
 .req-head .info { flex: 1; min-width: 0; }
 .req-head .title { font-weight: 700; font-size: 16px; }
+.req-head .toggle { margin-top: 4px; font-size: 13px; }
+.req-head .toggle input { width: 15px; height: 15px; }
 .req-head .btns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .req-items { border-top: 1px solid var(--border); padding: 8px 16px 12px; display: grid; gap: 6px; }
 .req-item { display: flex; align-items: center; gap: 10px; font-size: 14px; }
