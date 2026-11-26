@@ -46,6 +46,7 @@ export async function processRequest(req) {
 
   const albums = await lidarr.getAlbums(artist.id);
   const ready = [];
+  let refreshing = null; // only asked when an album is missing
   for (const item of todo) {
     const album = albums.find((a) => a.foreignAlbumId === item.mbid);
     if (album) {
@@ -57,14 +58,29 @@ export async function processRequest(req) {
     }
     item.status = 'waiting';
     item.attempts = (item.attempts || 0) + 1;
-    // An existing artist may be missing new releases – ask Lidarr to refresh once
-    if (item.attempts === 2 && !req.artistAddedByUs && !req.refreshSent) {
-      req.refreshSent = true;
-      await lidarr.refreshArtist(artist.id).catch(() => {});
+    // Not in the artist's album list: the metadata profile leaves out this type (EP/Single/Live etc.),
+    // or Lidarr hasn't picked up a new release yet. Add the album on its own – but not while Lidarr is
+    // still fetching the artist's albums, or the two could add the same album twice.
+    if (!item.addSent) {
+      if (refreshing === null) refreshing = await lidarr.isArtistRefreshing(artist.id).catch(() => true);
+      if (!refreshing) {
+        item.addSent = true;
+        try {
+          const added = await lidarr.addAlbum(item.mbid, artist);
+          item.lidarrAlbumId = added.id;
+          item.status = 'searching'; // Lidarr searches by itself once it has the track list
+          item.error = '';
+          console.log(`[worker] #${req.id}: added "${item.title}" to ${req.artistName} in Lidarr`);
+          continue;
+        } catch (e) {
+          item.error = e.message;
+          console.error(`[worker] #${req.id}: could not add "${item.title}" to Lidarr:`, e.message);
+        }
+      }
     }
     if (item.attempts >= MAX_ATTEMPTS) {
       item.status = 'failed';
-      item.error = 'The album never showed up in Lidarr. Check that the metadata profile includes this type (EP/Single/Live etc.).';
+      item.error = item.error || 'The album never showed up in Lidarr.';
     }
   }
   if (ready.length) {

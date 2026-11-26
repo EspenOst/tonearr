@@ -79,10 +79,24 @@ http.createServer(async (req, res) => {
 }).listen(18096, () => console.log('Mock Emby  : http://localhost:18096  (API key: emby-key)'));
 
 async function fetchMbAlbums(mbid) {
-  const r = await fetch(`https://musicbrainz.org/ws/2/release-group?artist=${mbid}&type=album|ep&limit=100&fmt=json`, { headers: { 'User-Agent': UA } });
+  const r = await fetch(`https://musicbrainz.org/ws/2/release-group?artist=${mbid}&type=album&limit=100&fmt=json`, { headers: { 'User-Agent': UA } });
   const d = await r.json();
-  // Simulates a metadata profile that only includes studio albums and EPs
+  // Simulates a metadata profile that only includes studio albums – EPs and singles are added one by one
   return (d['release-groups'] || []).filter((g) => !(g['secondary-types'] || []).length);
+}
+
+// "Finds" a release after 5 sec, downloads for 20 sec, imports, and Emby sees it 10 sec later
+function simulateSearch(a) {
+  setTimeout(() => { a.dlStart = Date.now(); }, 5000);
+  setTimeout(() => {
+    a.dlStart = null;
+    a.files = 10;
+    const artist = artists.find((x) => x.id === a.artistId);
+    setTimeout(() => {
+      embyAlbums.push({ Id: 'e' + a.id, Name: a.title, AlbumArtist: artist.artistName, ProviderIds: { MusicBrainzReleaseGroup: a.foreignAlbumId } });
+      console.log(`[emby] ${a.title} added to the library`);
+    }, 10000);
+  }, 25000);
 }
 
 function stats(a) {
@@ -112,7 +126,7 @@ http.createServer(async (req, res) => {
     if (p === '/artist' && m === 'POST') {
       const b = await body(req);
       if (artists.some((a) => a.foreignArtistId === b.foreignArtistId)) return json(res, 400, [{ errorMessage: 'This artist has already been added' }]);
-      const a = { ...b, id: nextId++ };
+      const a = { ...b, id: nextId++, refreshing: true };
       artists.push(a);
       console.log(`[lidarr] added artist ${a.artistName}`);
       // The album list arrives after a while (like a real "RefreshArtist")
@@ -120,6 +134,7 @@ http.createServer(async (req, res) => {
         for (const g of await fetchMbAlbums(a.foreignArtistId)) {
           albums.push({ id: nextId++, artistId: a.id, foreignAlbumId: g.id, title: g.title, monitored: false, files: 0, releases: [] });
         }
+        a.refreshing = false;
         console.log(`[lidarr] fetched ${albums.filter((x) => x.artistId === a.id).length} albums for ${a.artistName}`);
       }, 4000);
       return json(res, 201, a);
@@ -136,6 +151,24 @@ http.createServer(async (req, res) => {
       const id = Number(u.searchParams.get('artistId'));
       return json(res, 200, albums.filter((a) => !id || a.artistId === id).map((a) => ({ ...a, statistics: stats(a) })));
     }
+    if (p === '/album/lookup') {
+      const mbid = u.searchParams.get('term').replace('lidarr:', '');
+      const r = await fetch(`https://musicbrainz.org/ws/2/release-group/${mbid}?fmt=json`, { headers: { 'User-Agent': UA } });
+      if (!r.ok) return json(res, 200, []);
+      const g = await r.json();
+      return json(res, 200, [{ foreignAlbumId: g.id, title: g.title, albumType: g['primary-type'], artist: {} }]);
+    }
+    if (p === '/album' && m === 'POST') {
+      // A single album added by hand – kept regardless of the metadata profile, searched for after the track list
+      const b = await body(req);
+      if (!b.artist?.id || !b.artist.qualityProfileId || !b.artist.metadataProfileId) return json(res, 400, [{ errorMessage: 'mock: artist with profiles is required' }]);
+      if (albums.some((x) => x.foreignAlbumId === b.foreignAlbumId)) return json(res, 400, [{ errorMessage: 'This album has already been added.' }]);
+      const a = { id: nextId++, artistId: b.artist.id, foreignAlbumId: b.foreignAlbumId, title: b.title, monitored: !!b.monitored, files: 0, releases: [] };
+      albums.push(a);
+      console.log(`[lidarr] added album ${a.title} (${b.albumType})`);
+      if (b.addOptions?.searchForNewAlbum) setTimeout(() => simulateSearch(a), 2000);
+      return json(res, 201, a);
+    }
     if (p === '/album/monitor' && m === 'PUT') {
       const b = await body(req);
       albums.filter((a) => b.albumIds.includes(a.id)).forEach((a) => (a.monitored = b.monitored));
@@ -144,23 +177,11 @@ http.createServer(async (req, res) => {
     if (p === '/command' && m === 'POST') {
       const b = await body(req);
       console.log(`[lidarr] command ${b.name}`, b.albumIds || b.artistId || '');
-      if (b.name === 'AlbumSearch') {
-        for (const id of b.albumIds) {
-          const a = albums.find((x) => x.id === id);
-          // "Finds" a release after 5 sec, downloads for 20 sec, imports, and Emby sees it 10 sec later
-          setTimeout(() => { a.dlStart = Date.now(); }, 5000);
-          setTimeout(() => {
-            a.dlStart = null;
-            a.files = 10;
-            const artist = artists.find((x) => x.id === a.artistId);
-            setTimeout(() => {
-              embyAlbums.push({ Id: 'e' + a.id, Name: a.title, AlbumArtist: artist.artistName, ProviderIds: { MusicBrainzReleaseGroup: a.foreignAlbumId } });
-              console.log(`[emby] ${a.title} added to the library`);
-            }, 10000);
-          }, 25000);
-        }
-      }
+      if (b.name === 'AlbumSearch') for (const id of b.albumIds) simulateSearch(albums.find((x) => x.id === id));
       return json(res, 201, { id: nextId++, name: b.name });
+    }
+    if (p === '/command' && m === 'GET') {
+      return json(res, 200, artists.filter((a) => a.refreshing).map((a) => ({ id: nextId++, name: 'RefreshArtist', status: 'started', body: { artistIds: [a.id], isNewArtist: true } })));
     }
     if (p === '/queue') {
       const records = albums.filter((a) => a.dlStart).map((a) => {

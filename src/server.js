@@ -368,9 +368,8 @@ route('POST', '/api/requests/:id/retry', async (req, res, { params, session }) =
   if (!session.isAdmin && r.userId !== session.userId) throw new HttpError(403, 'Access denied');
   if (r.status === 'pending' || r.status === 'declined') throw new HttpError(400, 'The request has not been approved');
   r.items.forEach((i) => {
-    if (i.status === 'failed' || i.status === 'waiting') { i.status = 'approved'; i.attempts = 0; i.error = ''; }
+    if (i.status === 'failed' || i.status === 'waiting') { i.status = 'approved'; i.attempts = 0; i.error = ''; i.addSent = false; }
   });
-  r.refreshSent = false;
   r.notified = (r.notified || []).filter((e) => e !== 'failed'); // a new failure is worth a new email
   db.updateRequest(r, { status: computeStatus(r), error: '' });
   setImmediate(runOnce);

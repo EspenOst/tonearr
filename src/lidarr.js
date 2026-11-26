@@ -130,7 +130,32 @@ export const monitorAlbums = (albumIds) => api('PUT', '/album/monitor', { albumI
 
 export const searchAlbums = (albumIds) => api('POST', '/command', { name: 'AlbumSearch', albumIds });
 
-export const refreshArtist = (artistId) => api('POST', '/command', { name: 'RefreshArtist', artistId });
+/** True while Lidarr is still fetching the artist's album list (e.g. right after the artist was added). */
+export async function isArtistRefreshing(artistId) {
+  const cmds = await api('GET', '/command');
+  return (cmds || []).some((c) => {
+    if (c.name !== 'RefreshArtist' && c.name !== 'BulkRefreshArtist') return false;
+    if (!['queued', 'started'].includes(String(c.status).toLowerCase())) return false;
+    const ids = c.body?.artistIds || [];
+    return !ids.length || ids.includes(artistId); // no ids = refresh of every artist
+  });
+}
+
+export async function lookupAlbum(mbid) {
+  const list = await api('GET', `/album/lookup?term=${encodeURIComponent('lidarr:' + mbid)}`);
+  return (list || []).find((a) => a.foreignAlbumId === mbid) || null;
+}
+
+/**
+ * Adds a single album to an artist already in Lidarr, like searching for an album under "Add New" in
+ * Lidarr. Lidarr marks it as manually added, so it is kept even when the artist's metadata profile
+ * leaves out that type (EP/Single/Live etc.), and searches for it once it has fetched the track list.
+ */
+export async function addAlbum(mbid, artist) {
+  const lookup = await lookupAlbum(mbid);
+  if (!lookup) throw new Error('Lidarr could not find the album in its metadata database');
+  return api('POST', '/album', { ...lookup, artist, monitored: true, addOptions: { searchForNewAlbum: true } });
+}
 
 export async function getQueue() {
   const data = await api('GET', '/queue?page=1&pageSize=1000&includeUnknownArtistItems=false');

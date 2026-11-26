@@ -74,7 +74,7 @@ export function pruneSessions() {
 
 // ---------- Requests ----------
 // request: { id, userId, userName, artistMbid, artistName, monitorNew, status, createdAt, updatedAt,
-//            lidarrArtistId, artistAddedByUs, note, items: [{ mbid, title, type, year, status, lidarrAlbumId, attempts, error, progress }] }
+//            lidarrArtistId, artistAddedByUs, note, items: [{ mbid, title, type, year, status, lidarrAlbumId, attempts, addSent, error, progress }] }
 
 export function createRequest(data) {
   const req = {
