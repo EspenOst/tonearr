@@ -152,6 +152,7 @@ img.round { object-fit: cover; display: block; background: var(--card-hover); }
 .actionbar .grow { flex: 1; }
 .toggle { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; color: var(--muted); font-size: 14px; user-select: none; }
 .toggle input { width: 17px; height: 17px; accent-color: var(--accent); }
+.hero .toggle.follow { color: #c7cbe0; margin-top: 12px; }
 details.more > summary { cursor: pointer; list-style: none; }
 details.more > summary::-webkit-details-marker { display: none; }
 details.more > summary h2::after { content: "▸"; color: var(--muted); font-size: 14px; }

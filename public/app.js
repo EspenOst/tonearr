@@ -424,16 +424,18 @@ async function renderArtist(mbid) {
           <h1>${esc(artist.name)}</h1>
           <div class="meta">${meta.map(esc).join(' · ')}
             ${artist.inLibrary ? '<span class="badge lib">On the server</span>' : ''}
-            ${artist.inLidarr ? '<span class="badge monitored">In Lidarr</span>' : ''}</div>
+            ${artist.inLidarr ? '<span class="badge monitored">In Lidarr</span>' : ''}
+            ${artist.monitorNew && !artist.canFollow ? '<span class="badge monitored">Following new releases</span>' : ''}</div>
           ${artist.genres?.length ? `<div class="genres">${artist.genres.map((g) => `<span class="genre">${esc(g)}</span>`).join('')}</div>` : ''}
           ${artist.overview ? `<p class="overview" id="overview">${esc(artist.overview)}</p>` : ''}
+          ${artist.canFollow ? `<label class="toggle follow" title="Lidarr monitors the artist and grabs new albums when they come out"><input type="checkbox" id="follow" ${artist.monitorNew ? 'checked' : ''}> Follow new releases</label>` : ''}
         </div>
       </div>
     </div>
     <div class="actionbar">
       <button class="btn" id="selAlbums">Select all albums and EPs</button>
       <button class="btn ghost" id="selNone">Clear selection</button>
-      <label class="toggle"><input type="checkbox" id="monitorNew" ${artist.monitorNew ? 'checked disabled' : ''}> Follow new releases</label>
+      ${artist.canFollow ? '' : `<label class="toggle"><input type="checkbox" id="monitorNew" ${artist.monitorNew ? 'checked disabled' : ''}> Follow new releases</label>`}
       <span class="grow"></span>
       <button class="btn primary" id="doRequest" disabled>Request selected (0)</button>
     </div>
@@ -454,10 +456,25 @@ async function renderArtist(mbid) {
   };
   document.getElementById('selNone').onclick = () => { selected.clear(); update(); };
   document.getElementById('overview')?.addEventListener('click', (e) => e.target.classList.toggle('open'));
+  // Takes effect right away in Lidarr – no request needed
+  const $follow = document.getElementById('follow');
+  if ($follow) $follow.onchange = async () => {
+    const follow = $follow.checked;
+    $follow.disabled = true;
+    try {
+      const r = await api(`/artist/${encodeURIComponent(artist.mbid)}/follow`, { method: 'PUT', body: { follow } });
+      $follow.checked = r.monitorNew;
+      toast(follow ? `Following new releases from ${artist.name}` : `No longer following new releases from ${artist.name}`, 'ok');
+    } catch (e) {
+      $follow.checked = !follow;
+      toast(e.message, 'err');
+    }
+    $follow.disabled = false;
+  };
   $btn.onclick = async () => {
     $btn.disabled = true;
     const albums = releaseGroups.filter((r) => selected.has(r.mbid)).map((r) => ({ mbid: r.mbid, title: r.title, type: r.type, year: r.year }));
-    const ok = await submitRequest(artist, albums, document.getElementById('monitorNew').checked);
+    const ok = await submitRequest(artist, albums, !!document.getElementById('monitorNew')?.checked);
     if (ok) renderArtist(mbid);
     else $btn.disabled = false;
   };

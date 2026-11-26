@@ -41,7 +41,8 @@ export async function processRequest(req) {
   }
 
   if (req.lidarrArtistId !== artist.id) req.lidarrArtistId = artist.id;
-  if (req.monitorNew) await lidarr.setMonitorNew(artist, true);
+  // An artist already in Lidarr may be unmonitored – then Lidarr would never look for the albums again
+  artist = await lidarr.setArtistMonitoring(artist, { monitorNew: req.monitorNew ? true : undefined });
 
   const albums = await lidarr.getAlbums(artist.id);
   const ready = [];

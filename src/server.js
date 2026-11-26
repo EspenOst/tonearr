@@ -181,7 +181,7 @@ route('GET', '/api/search', async (req, res, { query }) => {
 // ---------- artist ----------
 const VARIOUS_ARTISTS_MSG = "Various Artists and [unknown] can't be requested – search for the artist instead";
 
-route('GET', '/api/artist/:mbid', async (req, res, { params }) => {
+route('GET', '/api/artist/:mbid', async (req, res, { params, session }) => {
   if (!UUID.test(params.mbid)) throw new HttpError(400, 'Invalid MBID');
   if (mb.isBlockedArtist(params.mbid)) throw new HttpError(404, VARIOUS_ARTISTS_MSG);
   const [artist, images, lidarrArtist] = await Promise.all([
@@ -200,9 +200,31 @@ route('GET', '/api/artist/:mbid', async (req, res, { params }) => {
   const idx = await libraryIndex();
   annotate(releaseGroups, idx, db.itemStatusMap(), artist.name, lidarrAlbums);
   send(res, 200, {
-    artist: { ...artist, ...images, inLibrary: !!emby.findArtist(idx, { mbid: artist.mbid, name: artist.name }) || releaseGroups.some((r) => r.status === 'available'),inLidarr: !!lidarrArtist, monitorNew: lidarrArtist?.monitorNewItems === 'all' },
+    artist: {
+      ...artist,
+      ...images,
+      inLibrary: !!emby.findArtist(idx, { mbid: artist.mbid, name: artist.name }) || releaseGroups.some((r) => r.status === 'available'),
+      inLidarr: !!lidarrArtist,
+      monitorNew: !!lidarrArtist?.monitored && lidarrArtist.monitorNewItems === 'all',
+      canFollow: canFollow(session),
+    },
     releaseGroups,
   });
+});
+
+// Following works like a standing request, so it is only for those whose requests need no approval
+const canFollow = (session) => session.isAdmin || config.autoApprove;
+
+route('PUT', '/api/artist/:mbid/follow', async (req, res, { params, session }) => {
+  if (!UUID.test(params.mbid)) throw new HttpError(400, 'Invalid MBID');
+  if (mb.isBlockedArtist(params.mbid)) throw new HttpError(400, VARIOUS_ARTISTS_MSG);
+  if (!canFollow(session)) throw new HttpError(403, 'Ask an administrator to follow new releases from this artist');
+  const follow = !!(await readJson(req)).follow;
+  let artist = await lidarr.getArtistByMbid(params.mbid);
+  if (artist) artist = await lidarr.setArtistMonitoring(artist, { monitorNew: follow });
+  else if (follow) artist = await lidarr.addArtist(params.mbid, { monitorNew: true });
+  console.log(`[follow] ${session.userName}: ${follow ? 'following' : 'stopped following'} new releases from ${artist?.artistName || params.mbid}`);
+  send(res, 200, { inLidarr: !!artist, monitorNew: !!artist?.monitored && artist.monitorNewItems === 'all' });
 });
 
 // ---------- discover ----------

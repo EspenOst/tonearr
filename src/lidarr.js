@@ -113,9 +113,14 @@ export async function addArtist(mbid, { monitorNew = false } = {}) {
   });
 }
 
-export async function setMonitorNew(artist, monitorNew) {
-  const wanted = monitorNew ? 'all' : 'none';
-  if (artist.monitorNewItems === wanted && artist.monitored) return artist;
+/**
+ * Makes sure the artist is monitored – Lidarr only looks for monitored albums of monitored artists,
+ * so this keeps requested albums wanted going forward. With `monitorNew` set (true/false) it also
+ * decides whether new releases are monitored; left out, that setting is kept as it is.
+ */
+export async function setArtistMonitoring(artist, { monitorNew } = {}) {
+  const wanted = monitorNew === undefined ? artist.monitorNewItems : monitorNew ? 'all' : 'none';
+  if (artist.monitored && artist.monitorNewItems === wanted) return artist;
   return api('PUT', `/artist/${artist.id}`, { ...artist, monitored: true, monitorNewItems: wanted });
 }
 
