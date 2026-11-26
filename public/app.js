@@ -403,7 +403,7 @@ async function renderArtist(mbid) {
   const section = ([label, fn], i) => {
     const list = releaseGroups.filter(fn);
     if (!list.length) return '';
-    const head = `<h2>${label} <span class="count">${list.length}</span></h2>`;
+    const head = `<h2>${label} <span class="count">${list.length}</span>${list.some(requestable) ? `<button class="btn sm ghost" data-selall="${i}">Select all</button>` : ''}</h2>`;
     const grid = `<div class="grid">${list.map((r) => `
       <div class="card ${requestable(r) ? 'selectable' : 'disabled'}" data-mbid="${esc(r.mbid)}">
         ${cover(r.mbid, r.title)}
@@ -431,7 +431,6 @@ async function renderArtist(mbid) {
       </div>
     </div>
     <div class="actionbar">
-      <button class="btn" id="selAlbums">Select all albums and EPs</button>
       <button class="btn ghost" id="selNone">Clear selection</button>
       <label class="toggle" title="Lidarr monitors the artist and grabs new albums when they come out"><input type="checkbox" id="monitorNew" ${artist.monitorNew ? 'checked disabled' : ''}> Follow new releases</label>
       <span class="grow"></span>
@@ -448,10 +447,14 @@ async function renderArtist(mbid) {
   page().querySelectorAll('.card.selectable').forEach((c) => {
     c.onclick = () => { selected.has(c.dataset.mbid) ? selected.delete(c.dataset.mbid) : selected.add(c.dataset.mbid); update(); };
   });
-  document.getElementById('selAlbums').onclick = () => {
-    releaseGroups.filter((r) => requestable(r) && (r.primaryType === 'Album' || r.primaryType === 'EP') && !r.secondaryTypes.length).forEach((r) => selected.add(r.mbid));
-    update();
-  };
+  page().querySelectorAll('[data-selall]').forEach((b) => {
+    b.onclick = (e) => {
+      e.preventDefault(); // inside <summary> the click would otherwise fold the section
+      b.closest('details')?.setAttribute('open', '');
+      releaseGroups.filter(groups[b.dataset.selall][1]).filter(requestable).forEach((r) => selected.add(r.mbid));
+      update();
+    };
+  });
   document.getElementById('selNone').onclick = () => { selected.clear(); update(); };
   document.getElementById('overview')?.addEventListener('click', (e) => e.target.classList.toggle('open'));
   $btn.onclick = async () => {
