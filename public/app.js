@@ -788,7 +788,7 @@ async function renderSettings() {
   const pollLib = () => api('/admin/library').then((r) => renderLib(r.library)).catch(() => {});
 
   const load = async () => {
-    const [{ settings: s }, status] = await Promise.all([api('/settings'), api('/admin/status').catch(() => null)]);
+    const [{ settings: s, version }, status] = await Promise.all([api('/settings'), api('/admin/status').catch(() => null)]);
     document.getElementById('st').innerHTML = settingsFormHtml(s) + `
       <div class="settings" style="margin-top:16px">
         <div class="panel">
@@ -796,6 +796,7 @@ async function renderSettings() {
           <div class="kv" id="lib"></div>
           <div class="test-row"><button class="btn sm" id="sync">Sync now</button><span class="muted small">Re-reads the Emby library and updates the status of requests.</span></div>
         </div>
+        <div class="muted small" style="margin-top:16px;text-align:center">Tonearr v${esc(version)}</div>
       </div>`;
     renderLib(status?.library);
     // Refresh the user too, so the "setup isn't finished" notice goes away once everything is filled in

@@ -390,7 +390,7 @@ route('GET', '/api/public/status', async (req, res) => {
 }, { auth: false });
 
 route('GET', '/api/settings', async (req, res) => {
-  send(res, 200, { settings: settings.view(), missingSettings: settings.missingSettings() });
+  send(res, 200, { settings: settings.view(), missingSettings: settings.missingSettings(), version: config.version });
 }, { admin: true });
 
 // Use the saved key when the client sends the masked value (or nothing)

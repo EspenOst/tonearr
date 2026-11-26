@@ -1,6 +1,6 @@
 {
   "name": "tonearr",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "description": "Seerr-like request site for music: Emby sign-in, MusicBrainz search, Lidarr downloads",
   "type": "module",
   "main": "src/server.js",
